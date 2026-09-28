@@ -34,7 +34,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             اطلس شبکه جاده‌ای و ترانزیت منتهی به ایران
           </h1>
           <p className="text-[10px] text-slate-400">
-            نسخه ارتقایافته با جستجوی هوشمند داده و دسترسی برخط به Google Search و Maps
+نقشه پایه منبع‌باز OpenFreeMap/OpenStreetMap · داده‌های زنده جوی، ارزی و تجاری
           </p>
         </div>
       </div>

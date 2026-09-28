@@ -14,15 +14,27 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
-// Initialize GoogleGenAI SDK on server side with required User-Agent
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+// Initialize GoogleGenAI SDK lazily so a missing key never breaks server startup
+let aiClient: GoogleGenAI | null = null;
+
+const MISSING_KEY_MESSAGE =
+  'کلید GEMINI_API_KEY روی سرور تنظیم نشده است. آن را در بخش تنظیمات › Environment (Keys) وارد کنید تا استعلام‌های بلادرنگ فعال شوند. سایر بخش‌ها (نقشه منبع‌باز، داده‌های زنده جوی و ارزی) بدون کلید کار می‌کنند.';
+
+function getAI(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return aiClient;
+}
 
 // Model for text and grounding tasks
 const GROUNDING_MODEL = 'gemini-3.8-flash';
@@ -34,6 +46,11 @@ app.post('/api/search-grounding', async (req, res) => {
 
     if (!query) {
       return res.status(400).json({ error: 'Query parameter is required' });
+    }
+
+    const ai = getAI();
+    if (!ai) {
+      return res.status(503).json({ error: MISSING_KEY_MESSAGE });
     }
 
     const systemInstruction = `شما دستیار ارشد هوشمند «اطلس شبکه جاده‌ای، گذرگاه‌های مرزی و ترانزیت ایران و اوراسیا» هستید.
@@ -100,6 +117,11 @@ app.post('/api/maps-grounding', async (req, res) => {
       return res.status(400).json({ error: 'Query parameter is required' });
     }
 
+    const ai = getAI();
+    if (!ai) {
+      return res.status(503).json({ error: MISSING_KEY_MESSAGE });
+    }
+
     const systemInstruction = `شما کارشناس لجستیک و مکان‌یابی مکانی «اطلس گذرگاه‌های مرزی و ترانزیتی» هستید.
 با استفاده از داده‌های مکانی موثق گوگل مپس (Google Maps Grounding)، اطلاعات پارکینگ‌های تیر (TIR Park)، تیرپارک‌ها، پایانه‌های مرزی، گمرکات، انبارهای سرپوشیده و سردخانه‌ها، آزمایشگاه‌های قرنطینه، پمپ‌بنزین‌ها و مراکز خدمات رفاهی رانندگان بین‌المللی را به دقت استخراج و معرفی کنید.
 پاسخ باید ساختاریافته به زبان فارسی باشد.`;
@@ -159,6 +181,11 @@ app.post('/api/maps-grounding', async (req, res) => {
 app.post('/api/corridor-ai-advisor', async (req, res) => {
   try {
     const { origin, destination, cargoType, weightTons, selectedMode, customNotes } = req.body;
+
+    const ai = getAI();
+    if (!ai) {
+      return res.status(503).json({ error: MISSING_KEY_MESSAGE });
+    }
 
     const prompt = `لطفاً تحلیل راهبردی و بهینه‌سازی زنجیره حمل کالا در مسیر زیر را با استعلام برخط شرایط واقعی مسیر ارائه دهید:
 - مبدأ: ${origin || 'مشخص نشده'}
