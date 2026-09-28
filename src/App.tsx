@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Compass,
+  Radar,
 } from 'lucide-react';
 import { DATA, RN } from './data/atlasData';
 import { Crossing, Corridor } from './types';
@@ -23,10 +24,11 @@ import { TransitPathfinder } from './components/TransitPathfinder';
 import { MultimodalPlanner } from './components/MultimodalPlanner';
 import { RoadNetworkView } from './components/RoadNetworkView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { LiveDataHub } from './components/LiveDataHub';
 
 export default function App() {
   const [darkTheme, setDarkTheme] = useState(true);
-  const [activeTab, setActiveTab] = useState<'ai' | 'filter' | 'pathfinder' | 'multimodal' | 'network' | 'analytics'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'livedata' | 'filter' | 'pathfinder' | 'multimodal' | 'network' | 'analytics'>('ai');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   // Crossings filters
@@ -246,6 +248,18 @@ export default function App() {
               </button>
 
               <button
+                onClick={() => setActiveTab('livedata')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
+                  activeTab === 'livedata'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <Radar className="w-3.5 h-3.5" />
+                <span>داده‌های زنده</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('filter')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
                   activeTab === 'filter'
@@ -332,6 +346,16 @@ export default function App() {
             </button>
             <button
               onClick={() => {
+                setActiveTab('livedata');
+                setIsPanelCollapsed(false);
+              }}
+              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
+              title="داده‌های زنده"
+            >
+              <Radar className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => {
                 setActiveTab('filter');
                 setIsPanelCollapsed(false);
               }}
@@ -390,6 +414,13 @@ export default function App() {
                 onFocusLocationOnMap={(lat, lng) => {
                   // Focused via maps grounding
                 }}
+              />
+            )}
+
+            {activeTab === 'livedata' && (
+              <LiveDataHub
+                selectedCrossing={selectedCrossing}
+                onSelectCrossing={(c) => setSelectedCrossing(c)}
               />
             )}
 

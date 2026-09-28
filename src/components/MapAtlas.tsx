@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { setWorkerUrl } from 'maplibre-gl';
 import maplibreglWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -26,10 +26,58 @@ interface MapAtlasProps {
   highlightedGateId?: number | null;
 }
 
-const STYLES = {
-  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-};
+/* ------------------------------------------------------------------ *
+ * نقشه‌های پایه منبع‌باز و رایگان (بدون کلید API و بدون ثبت‌نام)
+ *  - OpenFreeMap : وکتور منبع‌باز، داده OpenStreetMap، قابل خودمیزبانی
+ *  - OpenStreetMap: کاشی‌های شطرنجی کلاسیک پروژه OSM
+ * ------------------------------------------------------------------ */
+export type BasemapId = 'dark' | 'bright' | 'osm';
+
+const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
+const OPENFREEMAP_BRIGHT = 'https://tiles.openfreemap.org/styles/bright';
+
+const OPENFREEMAP_ATTRIBUTION = 'OpenFreeMap © OpenMapTiles · داده‌ها: OpenStreetMap';
+const OSM_ATTRIBUTION = '© مشارکت‌کنندگان OpenStreetMap (ODbL)';
+
+export const BASEMAPS: { id: BasemapId; label: string; hint: string }[] = [
+  { id: 'dark', label: 'تیکه', hint: 'OpenFreeMap Dark (وکتور منبع‌باز)' },
+  { id: 'bright', label: 'روشن', hint: 'OpenFreeMap Bright (وکتور منبع‌باز)' },
+  { id: 'osm', label: 'OSM', hint: 'کاشی شطرنجی کلاسیک OpenStreetMap' },
+];
+
+function osmRasterStyle(): maplibregl.StyleSpecification {
+  return {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: OSM_ATTRIBUTION,
+      },
+    },
+    layers: [
+      {
+        id: 'osm-raster',
+        type: 'raster',
+        source: 'osm',
+      },
+    ],
+  };
+}
+
+function styleFor(basemap: BasemapId): string | maplibregl.StyleSpecification {
+  if (basemap === 'osm') return osmRasterStyle();
+  return basemap === 'dark' ? OPENFREEMAP_DARK : OPENFREEMAP_BRIGHT;
+}
+
+interface OverlayData {
+  crossings: any;
+  corridors: any;
+  roads: any;
+  route: any;
+}
 
 export const MapAtlas: React.FC<MapAtlasProps> = ({
   crossings,
@@ -46,7 +94,8 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [basemap, setBasemap] = useState<BasemapId>(darkTheme ? 'dark' : 'bright');
+  const skipInitialStyle = useRef(true);
 
   // Build GeoJSONs
   const getCrossingsGeoJSON = () => {
@@ -130,37 +179,31 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
     };
   };
 
-  // Initialize Map
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+  // Latest overlay payload, so overlays can be rebuilt with fresh data after a style swap
+  const overlayBuilder = useRef<(() => OverlayData) | null>(null);
+  overlayBuilder.current = () => ({
+    crossings: getCrossingsGeoJSON(),
+    corridors: getCorridorsGeoJSON(),
+    roads: getRoadsGeoJSON(),
+    route: getSelectedRouteGeoJSON(),
+  });
 
-    const map = new maplibregl.Map({
-      container: mapContainer.current,
-      style: darkTheme ? STYLES.dark : STYLES.light,
-      center: [54, 34],
-      zoom: 4.3,
-      attributionControl: { compact: true },
-    });
+  const addOverlays = (map: maplibregl.Map) => {
+    const data = overlayBuilder.current ? overlayBuilder.current() : null;
+    if (!data) return;
 
-    map.on('error', (e) => {
-      // Gracefully handle any worker or style load notices without crashing the UI
-      if (e?.error?.message?.includes('Worker failed to load')) {
-        console.warn('MapLibre worker notification:', e.error?.message);
-      } else {
-        console.warn('MapLibre map event:', e?.error || e);
-      }
-    });
+    const source = (id: string, payload: any) => {
+      const existing = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+      if (existing) existing.setData(payload);
+      else map.addSource(id, { type: 'geojson', data: payload });
+    };
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    source('corridors', data.corridors);
+    source('roads', data.roads);
+    source('selected-route', data.route);
+    source('crossings', data.crossings);
 
-    map.on('load', () => {
-      // Add Sources
-      map.addSource('corridors', { type: 'geojson', data: getCorridorsGeoJSON() as any });
-      map.addSource('roads', { type: 'geojson', data: getRoadsGeoJSON() as any });
-      map.addSource('selected-route', { type: 'geojson', data: getSelectedRouteGeoJSON() as any });
-      map.addSource('crossings', { type: 'geojson', data: getCrossingsGeoJSON() as any });
-
-      // Corridors glow & line
+    if (!map.getLayer('corridor-glow')) {
       map.addLayer({
         id: 'corridor-glow',
         type: 'line',
@@ -262,62 +305,92 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
           'circle-stroke-width': 0.8,
         },
       });
+    }
+  };
 
-      // Popup on hover
-      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+  // Initialize Map
+  useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
 
-      map.on('mousemove', 'pts', (e) => {
-        if (!e.features || !e.features[0]) return;
-        const p: any = e.features[0].properties;
-        map.getCanvas().style.cursor = 'pointer';
-        popup
-          .setLngLat(e.lngLat)
-          .setHTML(
-            `<div class="text-right p-1 font-['Vazirmatn']">
-              <div class="font-bold text-sm text-amber-400">${p.name} ${p.name_en ? `<span class="text-xs text-gray-400">(${p.name_en})</span>` : ''}</div>
-              <div class="text-xs text-gray-300 mt-1">${p.country} · ${p.type}</div>
-              ${p.tr > 0 ? `<div class="text-[11px] text-emerald-400 mt-0.5">ظرفیت: ≈ ${Number(p.tr).toLocaleString('fa-IR')} کامیون/روز</div>` : ''}
-              ${p.status ? `<div class="text-[10px] text-gray-400">وضعیت: ${p.status}</div>` : ''}
-            </div>`
-          )
-          .addTo(map);
-      });
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: styleFor(darkTheme ? 'dark' : 'bright'),
+      center: [54, 34],
+      zoom: 4.3,
+      attributionControl: {
+        compact: true,
+        customAttribution: `${OPENFREEMAP_ATTRIBUTION} · کلید API لازم نیست`,
+      },
+    });
 
-      map.on('mouseleave', 'pts', () => {
-        map.getCanvas().style.cursor = '';
-        popup.remove();
-      });
+    map.on('error', (e) => {
+      // Gracefully handle any worker or style load notices without crashing the UI
+      if (e?.error?.message?.includes('Worker failed to load')) {
+        console.warn('MapLibre worker notification:', e.error?.message);
+      } else {
+        console.warn('MapLibre map event:', e?.error || e);
+      }
+    });
 
-      map.on('click', 'pts', (e) => {
-        if (!e.features || !e.features[0]) return;
-        const id = e.features[0].properties.id;
-        const crossing = crossings.find((c) => c.id === id);
-        if (crossing) {
-          onSelectCrossing(crossing);
-        }
-      });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-      map.on('click', (e) => {
-        if (pickMode && onPickLocation) {
-          // Find closest crossing within 35km
-          let closest: Crossing | null = null;
-          let minDist = 35;
-          for (const c of crossings) {
-            const dist = calculateDistance(e.lngLat.lat, e.lngLat.lng, c.lat, c.lng);
-            if (dist < minDist) {
-              minDist = dist;
-              closest = c;
-            }
+    // `setStyle` wipes custom sources/layers, so re-add them whenever a style finishes loading
+    map.on('style.load', () => addOverlays(map));
+
+    // Popup on hover
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+
+    map.on('mousemove', 'pts', (e) => {
+      if (!e.features || !e.features[0]) return;
+      const p: any = e.features[0].properties;
+      map.getCanvas().style.cursor = 'pointer';
+      popup
+        .setLngLat(e.lngLat)
+        .setHTML(
+          `<div class="text-right p-1 font-['Vazirmatn']">
+            <div class="font-bold text-sm text-amber-400">${p.name} ${p.name_en ? `<span class="text-xs text-gray-400">(${p.name_en})</span>` : ''}</div>
+            <div class="text-xs text-gray-300 mt-1">${p.country} · ${p.type}</div>
+            ${p.tr > 0 ? `<div class="text-[11px] text-emerald-400 mt-0.5">ظرفیت: ≈ ${Number(p.tr).toLocaleString('fa-IR')} کامیون/روز</div>` : ''}
+            ${p.status ? `<div class="text-[10px] text-gray-400">وضعیت: ${p.status}</div>` : ''}
+          </div>`
+        )
+        .addTo(map);
+    });
+
+    map.on('mouseleave', 'pts', () => {
+      map.getCanvas().style.cursor = '';
+      popup.remove();
+    });
+
+    map.on('click', 'pts', (e) => {
+      if (!e.features || !e.features[0]) return;
+      const id = e.features[0].properties.id;
+      const crossing = crossings.find((c) => c.id === id);
+      if (crossing) {
+        onSelectCrossing(crossing);
+      }
+    });
+
+    map.on('click', (e) => {
+      if (pickMode && onPickLocation) {
+        // Find closest crossing within 35km
+        let closest: Crossing | null = null;
+        let minDist = 35;
+        for (const c of crossings) {
+          const dist = calculateDistance(e.lngLat.lat, e.lngLat.lng, c.lat, c.lng);
+          if (dist < minDist) {
+            minDist = dist;
+            closest = c;
           }
-
-          if (closest) {
-            const gate: Crossing = closest;
-            onPickLocation(gate.lat, gate.lng, gate.name);
-          } else {
-            onPickLocation(e.lngLat.lat, e.lngLat.lng);
-          }
         }
-      });
+
+        if (closest) {
+          const gate: Crossing = closest;
+          onPickLocation(gate.lat, gate.lng, gate.name);
+        } else {
+          onPickLocation(e.lngLat.lat, e.lngLat.lng);
+        }
+      }
     });
 
     mapRef.current = map;
@@ -328,16 +401,26 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
     };
   }, []);
 
-  // Update theme
+  // Keep the basemap in sync with the light/dark theme (unless the user pinned the OSM raster)
   useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.setStyle(darkTheme ? STYLES.dark : STYLES.light);
+    setBasemap((prev) => (prev === 'osm' ? prev : darkTheme ? 'dark' : 'bright'));
   }, [darkTheme]);
+
+  // Swap basemap style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (skipInitialStyle.current) {
+      skipInitialStyle.current = false;
+      return;
+    }
+    map.setStyle(styleFor(basemap), { diff: false });
+  }, [basemap]);
 
   // Update crossing data
   useEffect(() => {
     if (!mapRef.current) return;
-    const source = mapRef.current.getSource('crossings') as maplibregl.GeoJSONSource;
+    const source = mapRef.current.getSource('crossings') as maplibregl.GeoJSONSource | undefined;
     if (source) {
       source.setData(getCrossingsGeoJSON() as any);
     }
@@ -346,7 +429,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
   // Update corridors
   useEffect(() => {
     if (!mapRef.current) return;
-    const source = mapRef.current.getSource('corridors') as maplibregl.GeoJSONSource;
+    const source = mapRef.current.getSource('corridors') as maplibregl.GeoJSONSource | undefined;
     if (source) {
       source.setData(getCorridorsGeoJSON() as any);
     }
@@ -355,7 +438,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
   // Update selected route
   useEffect(() => {
     if (!mapRef.current) return;
-    const source = mapRef.current.getSource('selected-route') as maplibregl.GeoJSONSource;
+    const source = mapRef.current.getSource('selected-route') as maplibregl.GeoJSONSource | undefined;
     if (source) {
       source.setData(getSelectedRouteGeoJSON() as any);
     }
@@ -383,6 +466,38 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="absolute inset-0" />
+
+      {/* Basemap switcher — all options are free & open-source */}
+      <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl p-1 shadow-xl">
+        <span className="px-2 pt-1 text-[9px] font-bold text-slate-400 text-center">
+          نقشه پایه منبع‌باز
+        </span>
+        <div className="flex items-center gap-1">
+          {BASEMAPS.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => setBasemap(b.id)}
+              title={b.hint}
+              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                basemap === b.id
+                  ? 'bg-gradient-to-r from-teal-500 to-amber-500 text-slate-950 shadow'
+                  : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+        <a
+          href="https://openfreemap.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-2 pb-1 text-[9px] text-slate-500 hover:text-teal-400 text-center transition-colors"
+        >
+          OpenFreeMap · OpenStreetMap
+        </a>
+      </div>
+
       {pickMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-amber-500/90 text-slate-950 font-bold px-4 py-2 rounded-full shadow-lg text-xs animate-pulse">
           {pickMode === 'origin' ? 'مبدأ را روی نقشه انتخاب کنید' : 'مقصد را روی نقشه انتخاب کنید'}
