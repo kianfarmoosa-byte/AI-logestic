@@ -1,0 +1,6 @@
+{
+  "name": "اطلس ترانزیت و گذرگاه‌های مرزی ایران",
+  "description": "سامانه هوشمند تحلیل شبکه راه‌ها، گذرگاه‌های مرزی، زنجیره تأمین کالا و مسیریابی چندوجهی منتهی به ایران با جستجوی بلادرنگ و داده‌های مکانی گوگل مپس",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
