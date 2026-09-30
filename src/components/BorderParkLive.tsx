@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, ExternalLink, Layers, Loader2, MapPin, RefreshCw, RadioTower, Truck } from 'lucide-react';
 import { Crossing } from '../types';
+import { readJsonOrThrow } from '../services/api';
 import { QueueHistoryPoint as QHP } from './QueueTrendChart';
 
 interface BorderParkQueueRow {
@@ -66,8 +67,7 @@ export const BorderParkLive: React.FC<BorderParkLiveProps> = ({ crossings, onFoc
     setError(null);
     try {
       const res = await fetch('/api/border-park/status');
-      if (!res.ok) throw new Error(`خطای سرور (${res.status})`);
-      const data = await res.json();
+      const data = await readJsonOrThrow<{ gates?: BorderParkSnapshot[] }>(res, 'خطای سرور');
       const gates: BorderParkSnapshot[] = data.gates ?? [];
       setGates(gates);
       // آخرین وضعیت را به نمودار روند صف بده تا بدون انتظار برای انباشت، یک نقطه داشته باشد

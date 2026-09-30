@@ -6,6 +6,8 @@
  * بنابراین رابط کاربری همیشه پاسخ می‌گیرد و برچسب موتور استفاده‌شده را نشان می‌دهد.
  */
 
+import { readJsonOrThrow } from './api';
+
 export interface WebSearchResult {
   title: string;
   url: string;
@@ -57,12 +59,7 @@ export async function searchWeb(params: {
     body: JSON.stringify(params),
   });
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    throw new Error(errorData?.error || errorData?.details || `خطای جستجو (${res.status})`);
-  }
-
-  return (await res.json()) as WebSearchResponse;
+  return readJsonOrThrow<WebSearchResponse>(res, 'خطای جستجو');
 }
 
 export async function fetchWebSearchStatus(): Promise<WebSearchStatus | null> {

@@ -1,5 +1,24 @@
 import { SearchGroundingResponse, MapsGroundingResponse } from '../types';
 
+/**
+ * خواندن امن پاسخ JSON. اگر سرور JSON نفرستاد — مثلاً هاست استقرار static مسیر /api را
+ * به index.html هدایت میکند — بهجای «Unexpected token '<'» پیام شفاف فارسی پرتاب میشود
+ * و سایر خطاهای سرور (۴۰۰/۵۰۳/۵۰۰) نیز با بدنهٔ JSON خود گزارش میشوند.
+ */
+export async function readJsonOrThrow<T>(response: Response, fallback: string): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      'سرویس‌های زندهٔ سرور در این استقرار (static) در دسترس نیستند؛ نقشه و ابزارهای سمت مرورگر فعال‌اند.'
+    );
+  }
+  const data = (await response.json().catch(() => null)) as (T & { error?: string; details?: string }) | null;
+  if (!response.ok || data === null) {
+    throw new Error(data?.error || data?.details || `${fallback} (${response.status})`);
+  }
+  return data;
+}
+
 export async function fetchSearchGrounding(params: {
   query: string;
   crossingName?: string;
@@ -12,12 +31,7 @@ export async function fetchSearchGrounding(params: {
     body: JSON.stringify(params),
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.details || `خطای سرور (${response.status})`);
-  }
-
-  return response.json();
+  return readJsonOrThrow<SearchGroundingResponse>(response, 'خطای سرور');
 }
 
 export async function fetchMapsGrounding(params: {
@@ -32,12 +46,7 @@ export async function fetchMapsGrounding(params: {
     body: JSON.stringify(params),
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.details || `خطای سرور (${response.status})`);
-  }
-
-  return response.json();
+  return readJsonOrThrow<MapsGroundingResponse>(response, 'خطای سرور');
 }
 
 export async function fetchCorridorAdvisor(params: {
@@ -54,10 +63,5 @@ export async function fetchCorridorAdvisor(params: {
     body: JSON.stringify(params),
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.details || `خطای سرور (${response.status})`);
-  }
-
-  return response.json();
+  return readJsonOrThrow<SearchGroundingResponse>(response, 'خطای سرور');
 }

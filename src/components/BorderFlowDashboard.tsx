@@ -15,6 +15,7 @@ import { MonthlyTrendChart, TrendMonth } from './MonthlyTrendChart';
 import { BorderParkLive } from './BorderParkLive';
 import { OpsEventsBoard } from './OpsEventsBoard';
 import { QueueHistoryPoint } from './QueueTrendChart';
+import { readJsonOrThrow } from '../services/api';
 
 interface BorderFlowRecord {
   id: string;
@@ -152,8 +153,7 @@ export const BorderFlowDashboard: React.FC<BorderFlowDashboardProps> = ({ crossi
     setError(null);
     try {
       const res = await fetch('/api/border-flow');
-      if (!res.ok) throw new Error(`خطای سرور (${res.status})`);
-      setData((await res.json()) as BorderFlowResponse);
+      setData(await readJsonOrThrow<BorderFlowResponse>(res, 'خطای سرور'));
     } catch (e: any) {
       setError(e?.message || 'گردآوری داده ناموفق بود');
     } finally {
