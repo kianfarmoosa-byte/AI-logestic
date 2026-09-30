@@ -48,7 +48,8 @@
         var NOISE = [
           /WebSocket closed without opened/i,
           /@vite\/client/i,
-          /\[vite\] connect/i,
+          /\[vite\]\s+connect/i,
+          /failed to connect to websocket/i,
         ];
         function isNoise(message, stack) {
           var text = (message || '') + '\n' + (stack || '');
