@@ -52,9 +52,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   return (
     <div className="flex flex-col gap-4 p-3 font-['Vazirmatn'] text-xs">
       {/* Type distribution donut simulation */}
-      <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 shadow-sm">
         <h4 className="font-bold text-slate-300 text-xs mb-3 flex items-center gap-1.5">
-          <PieChart className="w-4 h-4 text-amber-400" />
+          <PieChart className="w-4 h-4 text-[var(--cmd-green)]" />
           <span>ترکیب نوع گذرگاه‌های مرزی</span>
         </h4>
         <div className="flex items-center gap-4">
@@ -92,10 +92,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
       </div>
 
-      {/* Top Capacity Gates */}
-      <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+      {/* Top Capacity Gates — رتبه‌بندی با نوار سبز امضایی */}
+      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 shadow-sm">
         <h4 className="font-bold text-slate-300 text-xs mb-3 flex items-center gap-1.5">
-          <BarChart3 className="w-4 h-4 text-emerald-400" />
+          <BarChart3 className="w-4 h-4 text-[var(--cmd-green)]" />
           <span>پرظرفیت‌ترین پایانه‌های مرزی (کامیون در روز)</span>
         </h4>
         <div className="space-y-2">
@@ -106,16 +106,16 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               className="cursor-pointer group"
             >
               <div className="flex justify-between items-center text-[11px] mb-1">
-                <span className="font-medium text-slate-200 group-hover:text-amber-400 transition-colors">
+                <span className="font-medium text-slate-200 group-hover:text-[var(--cmd-green)] transition-colors">
                   {gate.name} ({gate.country})
                 </span>
-                <span className="text-emerald-400 font-bold">
+                <span className="text-[var(--cmd-green)] font-bold">
                   {Number(gate.trucks_est).toLocaleString('fa-IR')}
                 </span>
               </div>
               <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all group-hover:brightness-125"
+                  className="bg-[var(--cmd-green)] h-full rounded-full transition-all group-hover:brightness-110"
                   style={{ width: `${((gate.trucks_est || 0) / maxCap) * 100}%` }}
                 />
               </div>
@@ -125,9 +125,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       </div>
 
       {/* Country Distribution */}
-      <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 shadow-sm">
         <h4 className="font-bold text-slate-300 text-xs mb-3 flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-teal-400" />
+          <Activity className="w-4 h-4 text-[var(--tone-sky)]" />
           <span>توزیع کشوری گذرگاه‌ها در شبکه</span>
         </h4>
         <div className="space-y-2">
@@ -139,7 +139,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               </div>
               <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                 <div
-                  className="bg-teal-500/70 h-full rounded-full"
+                  className="bg-[var(--cmd-green)]/70 h-full rounded-full"
                   style={{ width: `${(count / maxCountry) * 100}%` }}
                 />
               </div>
@@ -149,7 +149,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       </div>
 
       {/* Corridors Management */}
-      <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 shadow-sm">
         <h4 className="font-bold text-slate-300 text-xs mb-3">کریدورهای بین‌المللی ترانزیت</h4>
         <div className="space-y-2">
           {corridors.map((c, idx) => (
@@ -169,7 +169,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                 type="checkbox"
                 checked={activeCorridors[idx]}
                 readOnly
-                className="accent-amber-400 rounded cursor-pointer"
+                className="accent-[var(--cmd-green)] rounded cursor-pointer"
               />
             </div>
           ))}

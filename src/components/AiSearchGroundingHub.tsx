@@ -23,20 +23,86 @@ import {
   SearchGroundingResponse,
   MapsGroundingResponse,
   Crossing,
+  Corridor,
+  CountryRoadNetwork,
+  MapFocusTarget,
+  MapSearchPin,
 } from '../types';
 import { QUICK_SEARCH_PROMPTS, MAPS_PROMPT_PRESETS } from '../data/atlasData';
+import { GEO_DISTANCE_LABELS, attachRoadPaths, buildGazetteer, geoTagResults } from '../services/geoTagging';
+import { searchWeb, WebSearchResponse } from '../services/webSearch';
 
 interface AiSearchGroundingHubProps {
   selectedCrossing: Crossing | null;
   onSelectCoordinates?: (lat: number, lng: number) => void;
   onFocusLocationOnMap?: (lat: number, lng: number, zoom?: number) => void;
+  /** دادهٔ اطلس برای مکان‌یابی نتایج روی نقشه */
+  crossings?: Crossing[];
+  roadNetwork?: Record<string, CountryRoadNetwork>;
+  corridors?: Corridor[];
+  onDrawPins?: (pins: MapSearchPin[]) => void;
+  onFocusPoint?: (target: MapFocusTarget) => void;
 }
 
 export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
   selectedCrossing,
   onFocusLocationOnMap,
+  crossings = [],
+  roadNetwork = {},
+  corridors = [],
+  onDrawPins,
+  onFocusPoint,
 }) => {
   const [activeMode, setActiveMode] = useState<'search' | 'maps' | 'advisor'>('search');
+
+  // مکان‌یابی نتایج استعلام هوشمند روی نقشه (بدون کلید اضافی)
+  const gazetteer = React.useMemo(
+    () => buildGazetteer({ crossings, roadNetwork, corridors }),
+    [crossings, roadNetwork, corridors]
+  );
+  const [groundedPins, setGroundedPins] = useState<MapSearchPin[]>([]);
+  // زنجیرهٔ جستجوی واقعی وب به‌عنوان جایگزین وقتی کلید دستیار هوشمند در دسترس نیست
+  const [fallback, setFallback] = useState<WebSearchResponse | null>(null);
+  const [isFallbackLoading, setIsFallbackLoading] = useState(false);
+
+  const tagGroundedPlaces = async (text: string, sources: { uri: string; title: string }[]) => {
+    if (gazetteer.length === 0) return;
+    const results = [
+      { title: 'جمع‌بندی زندهٔ استعلام', snippet: text, url: '', source: 'ai-grounding' },
+      ...sources.map((source) => ({ title: source.title, snippet: '', url: source.uri, source: source.uri })),
+    ];
+    const tagged = await geoTagResults(results, gazetteer, crossings, { roadDistance: true });
+    const limited = tagged.pins.slice(0, 14);
+    setGroundedPins(limited);
+    if (onDrawPins) onDrawPins(limited);
+    // مسیرهای واقعی جاده‌ای در پس‌زمینه پس‌چسب می‌شوند
+    void attachRoadPaths(limited).then((patched) => {
+      setGroundedPins(patched);
+      if (onDrawPins) onDrawPins(patched);
+    });
+  };
+
+  /** اجرای جستجوی واقعی وب و مکان‌یابی نتایج روی نقشه (بدون نیاز به کلید هوش مصنوعی) */
+  const runWebFallback = async (query: string) => {
+    if (!query.trim() || gazetteer.length === 0) return;
+    setIsFallbackLoading(true);
+    try {
+      const data = await searchWeb({ query, mode: 'web', num: 8 });
+      setFallback(data);
+      const tagged = await geoTagResults(data.results, gazetteer, crossings, { roadDistance: true });
+      const limited = tagged.pins.slice(0, 14);
+      setGroundedPins(limited);
+      if (onDrawPins) onDrawPins(limited);
+      void attachRoadPaths(limited).then((patched) => {
+        setGroundedPins(patched);
+        if (onDrawPins) onDrawPins(patched);
+      });
+    } catch {
+      // زنجیرهٔ جستجو هم پاسخ نداد؛ پیام خطای اصلی باقی می‌ماند
+    } finally {
+      setIsFallbackLoading(false);
+    }
+  };
 
   // Search grounding states
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,8 +166,13 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
         category: searchCategory,
       });
       setSearchResult(data);
+      setFallback(null);
+      await tagGroundedPlaces(data.text || '', data.sources || []);
     } catch (err: any) {
       setSearchError(err.message || 'خطا در برقراری ارتباط با سرویس جستجوی گوگل');
+      setIsSearchLoading(false);
+      await runWebFallback(q);
+      return;
     } finally {
       setIsSearchLoading(false);
     }
@@ -152,8 +223,13 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
         selectedMode: advisorMode,
       });
       setAdvisorResult(data);
+      setFallback(null);
+      await tagGroundedPlaces(data.text || '', data.sources || []);
     } catch (err: any) {
       setAdvisorError(err.message || 'خطا در ارزیابی استراتژیک کریدور');
+      setIsAdvisorLoading(false);
+      await runWebFallback(`${advisorOrigin} ${advisorDestination} ${advisorCargo} ترانزیت مرزی`);
+      return;
     } finally {
       setIsAdvisorLoading(false);
     }
@@ -161,24 +237,24 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
 
   return (
     <div className="flex flex-col gap-4 p-3 font-['Vazirmatn']">
-      {/* Hero Header */}
-      <div className="bg-gradient-to-r from-teal-950/60 to-slate-900/80 border border-teal-500/30 rounded-2xl p-4 shadow-lg">
-        <div className="flex items-center gap-2 text-teal-400 font-bold text-sm mb-1">
+      {/* Hero Header — کارت سبز امضایی (سربرگ Trafic Insights) */}
+      <div className="bg-[var(--cmd-green-soft)] border border-[var(--cmd-green-ring)] rounded-2xl p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-[var(--cmd-green)] font-bold text-sm mb-1">
           <Sparkles className="w-4 h-4" />
           <span>هاب جستجو و دسترسی واقعی به داده‌های ترانزیتی و مرزی</span>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed">
-          دسترسی برخط به آخرین وضعیت صفوف و پایانه‌ها، ترخیص گمرکی، اخبار مرزی با <strong>Google Search Grounding</strong> و استعلام مکان‌های لجستیکی با <strong>Google Maps Grounding</strong>.
+          دسترسی برخط به آخرین وضعیت صفوف و پایانه‌ها، ترخیص گمرکی و اخبار مرزی با <strong>دستیار هوشمند ترانزیتی</strong> و استعلام مکان‌های لجستیکی با <strong>موتور مکانی سامانه</strong>.
         </p>
       </div>
 
-      {/* Mode Switcher */}
+      {/* Mode Switcher — سه زبانه با فعال سبز کروم (Overview) */}
       <div className="grid grid-cols-3 gap-1 bg-slate-900/70 p-1 border border-slate-700/60 rounded-xl">
         <button
           onClick={() => setActiveMode('search')}
           className={`flex items-center justify-center gap-1.5 py-2 px-1 text-xs font-semibold rounded-lg transition-all ${
             activeMode === 'search'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+              ? 'btn-cmd-green shadow-md font-bold'
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
@@ -190,7 +266,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
           onClick={() => setActiveMode('maps')}
           className={`flex items-center justify-center gap-1.5 py-2 px-1 text-xs font-semibold rounded-lg transition-all ${
             activeMode === 'maps'
-              ? 'bg-teal-500 text-slate-950 shadow-md font-bold'
+              ? 'btn-cmd-green shadow-md font-bold'
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
@@ -202,7 +278,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
           onClick={() => setActiveMode('advisor')}
           className={`flex items-center justify-center gap-1.5 py-2 px-1 text-xs font-semibold rounded-lg transition-all ${
             activeMode === 'advisor'
-              ? 'bg-purple-500 text-white shadow-md font-bold'
+              ? 'btn-cmd-green shadow-md font-bold'
               : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
@@ -227,7 +303,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                     setSearchCategory(item.category);
                     handleSearchSubmit(undefined, item.query);
                   }}
-                  className="text-[11px] bg-slate-800/80 hover:bg-amber-500/20 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 border border-slate-700 px-2.5 py-1 rounded-full transition-all text-right"
+                  className="text-[11px] bg-slate-800/80 hover:bg-[var(--cmd-green-soft)] hover:border-[var(--cmd-green-ring)] text-slate-300 hover:text-[var(--cmd-green)] border border-slate-700 px-2.5 py-1 rounded-full transition-all text-right"
                 >
                   ⚡ {item.title}
                 </button>
@@ -244,7 +320,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="مثلاً: آخرین وضعیت ترافیک و صف کامیون‌ها در بازرگان، یا شرایط عبور بار فسادپذیر از آستارا..."
                 rows={2}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[var(--cmd-green)]"
               />
             </div>
 
@@ -278,17 +354,17 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
             <button
               type="submit"
               disabled={isSearchLoading || !searchQuery.trim()}
-              className="mt-1 flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-1 flex items-center justify-center gap-2 btn-cmd-green font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSearchLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>در حال جستجوی بلادرنگ در وب گوگل…</span>
+                  <span>در حال جستجوی بلادرنگ در وب…</span>
                 </>
               ) : (
                 <>
                   <Search className="w-4 h-4" />
-                  <span>جستجو با Google Search Grounding</span>
+                  <span>استعلام برخط با دستیار هوشمند</span>
                 </>
               )}
             </button>
@@ -302,11 +378,22 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
             </div>
           )}
 
+          <WebFallbackCard
+            response={fallback}
+            isLoading={isFallbackLoading}
+            pins={groundedPins}
+            onFocusPoint={onFocusPoint}
+            onClearPins={() => {
+              setGroundedPins([]);
+              if (onDrawPins) onDrawPins([]);
+            }}
+          />
+
           {/* Search Result */}
           {searchResult && (
             <div className="flex flex-col gap-3 bg-slate-900/80 border border-slate-700/80 rounded-xl p-3.5 shadow-md">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                <div className="flex items-center gap-1.5 text-[var(--cmd-green)] font-bold text-xs">
                   <Globe2 className="w-4 h-4" />
                   <span>نتایج زنده وب گوگل (Grounded Intelligence)</span>
                 </div>
@@ -338,7 +425,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                         href={src.uri}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-between text-[11px] text-teal-400 hover:text-teal-300 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/80 transition-colors"
+                        className="flex items-center justify-between text-[11px] text-[var(--tone-sky)] hover:text-[var(--tone-sky)]/80 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/80 transition-colors"
                       >
                         <span className="truncate max-w-[260px] text-right">{src.title}</span>
                         <ExternalLink className="w-3 h-3 shrink-0 mr-1 opacity-70" />
@@ -347,6 +434,15 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                   </div>
                 </div>
               )}
+
+              <GroundedPlacesCard
+                pins={groundedPins}
+                onFocusPoint={onFocusPoint}
+                onClear={() => {
+                  setGroundedPins([]);
+                  if (onDrawPins) onDrawPins([]);
+                }}
+              />
             </div>
           )}
         </div>
@@ -368,7 +464,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                     setMapsLng(String(item.lng));
                     handleMapsSubmit(undefined, item.query, item.lat, item.lng);
                   }}
-                  className="text-[11px] bg-slate-800/80 hover:bg-teal-500/20 hover:border-teal-500/40 text-slate-300 hover:text-teal-300 border border-slate-700 px-2.5 py-1 rounded-full transition-all text-right"
+                  className="text-[11px] bg-slate-800/80 hover:bg-[var(--cmd-green-soft)] hover:border-[var(--cmd-green-ring)] text-slate-300 hover:text-[var(--cmd-green)] border border-slate-700 px-2.5 py-1 rounded-full transition-all text-right"
                 >
                   📍 {item.title}
                 </button>
@@ -385,7 +481,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                 onChange={(e) => setMapsQuery(e.target.value)}
                 placeholder="مثلاً: تیرپارک، پارکینگ کامیون، باسکول و انبار کانتینری در مرز بازرگان ماکو..."
                 rows={2}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-400"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[var(--cmd-green)]"
               />
             </div>
 
@@ -415,17 +511,17 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
             <button
               type="submit"
               disabled={isMapsLoading || !mapsQuery.trim()}
-              className="mt-1 flex items-center justify-center gap-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-slate-950 font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-1 flex items-center justify-center gap-2 btn-cmd-green font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isMapsLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>در حال جستجوی اماکن در گوگل مپس…</span>
+                  <span>در حال جستجوی اماکن و تأسیسات…</span>
                 </>
               ) : (
                 <>
                   <MapPin className="w-4 h-4" />
-                  <span>جستجو با Google Maps Grounding</span>
+                  <span>استعلام اماکن با دستیار هوشمند</span>
                 </>
               )}
             </button>
@@ -443,7 +539,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
           {mapsResult && (
             <div className="flex flex-col gap-3 bg-slate-900/80 border border-slate-700/80 rounded-xl p-3.5 shadow-md">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-1.5 text-teal-400 font-bold text-xs">
+                <div className="flex items-center gap-1.5 text-[var(--tone-sky)] font-bold text-xs">
                   <MapPin className="w-4 h-4" />
                   <span>اماکن شناسایی‌شده در گوگل مپس ({mapsResult.places.length})</span>
                 </div>
@@ -472,13 +568,13 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                           href={place.uri}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-between text-xs font-semibold text-teal-400 hover:text-teal-300"
+                          className="flex items-center justify-between text-xs font-semibold text-[var(--tone-sky)] hover:text-[var(--tone-sky)]/80"
                         >
                           <span className="truncate">{place.title}</span>
-                          <ExternalLink className="w-3.5 h-3.5 shrink-0 mr-1 text-teal-400" />
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0 mr-1 text-[var(--tone-sky)]" />
                         </a>
                         {place.reviewSnippets && place.reviewSnippets.length > 0 && (
-                          <div className="text-[10px] text-slate-400 border-r-2 border-teal-500/40 pr-1.5 mt-0.5">
+                          <div className="text-[10px] text-slate-400 border-r-2 border-[var(--tone-sky)]/40 pr-1.5 mt-0.5">
                             {place.reviewSnippets[0]}
                           </div>
                         )}
@@ -555,7 +651,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
             <button
               type="submit"
               disabled={isAdvisorLoading}
-              className="mt-1 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-1 flex items-center justify-center gap-2 btn-cmd-green font-bold py-2 rounded-lg text-xs transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAdvisorLoading ? (
                 <>
@@ -578,10 +674,21 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
             </div>
           )}
 
+          <WebFallbackCard
+            response={fallback}
+            isLoading={isFallbackLoading}
+            pins={groundedPins}
+            onFocusPoint={onFocusPoint}
+            onClearPins={() => {
+              setGroundedPins([]);
+              if (onDrawPins) onDrawPins([]);
+            }}
+          />
+
           {advisorResult && (
-            <div className="flex flex-col gap-3 bg-slate-900/80 border border-purple-500/30 rounded-xl p-3.5 shadow-md">
+            <div className="flex flex-col gap-3 bg-slate-900/80 border border-[var(--cmd-green-ring)] rounded-xl p-3.5 shadow-md">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-1.5 text-purple-400 font-bold text-xs">
+                <div className="flex items-center gap-1.5 text-[var(--cmd-green)] font-bold text-xs">
                   <Compass className="w-4 h-4" />
                   <span>توصیه‌نامه ترانزیتی و اسنادی (بر خط)</span>
                 </div>
@@ -601,7 +708,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
               {advisorResult.sources && advisorResult.sources.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
                   <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
-                    <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-[var(--cmd-green)]" />
                     <span>منابع تأیید شده وب:</span>
                   </div>
                   <div className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-1">
@@ -611,7 +718,7 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                         href={src.uri}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-between text-[11px] text-purple-400 hover:text-purple-300 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/80"
+                        className="flex items-center justify-between text-[11px] text-[var(--tone-violet)] hover:text-[var(--tone-violet)]/80 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/80"
                       >
                         <span className="truncate max-w-[260px] text-right">{src.title}</span>
                         <ExternalLink className="w-3 h-3 shrink-0 mr-1 opacity-70" />
@@ -620,10 +727,121 @@ export const AiSearchGroundingHub: React.FC<AiSearchGroundingHubProps> = ({
                   </div>
                 </div>
               )}
+
+              <GroundedPlacesCard
+                pins={groundedPins}
+                onFocusPoint={onFocusPoint}
+                onClear={() => {
+                  setGroundedPins([]);
+                  if (onDrawPins) onDrawPins([]);
+                }}
+              />
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+/** نتایج زنجیرهٔ جستجوی واقعی وب با مکان‌یابی روی نقشه — جایگزین استعلام هوشمند در نبود کلید */
+const WebFallbackCard: React.FC<{
+  response: WebSearchResponse | null;
+  isLoading: boolean;
+  pins: MapSearchPin[];
+  onFocusPoint?: (target: MapFocusTarget) => void;
+  onClearPins: () => void;
+}> = ({ response, isLoading, pins, onFocusPoint, onClearPins }) => {
+  if (isLoading && !response) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-slate-900/70 border border-slate-700/70 rounded-xl text-slate-300 text-xs">
+        <Loader2 className="w-4 h-4 animate-spin text-[var(--cmd-green)]" />
+        <span>استعلام هوشمند گوگل در دسترس نیست؛ اجرای زنجیرهٔ جستجوی واقعی وب و رسم مسیر جاده‌ای…</span>
+      </div>
+    );
+  }
+  if (!response) return null;
+
+  return (
+    <div className="flex flex-col gap-2 bg-slate-900/80 border border-[var(--cmd-green-ring)] rounded-xl p-3.5 shadow-md">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+        <span className="flex items-center gap-1.5 text-[var(--cmd-green)] font-bold text-xs">
+          <Globe2 className="w-4 h-4" />
+          <span>نتایج زندهٔ وب — {response.providerLabel}</span>
+        </span>
+        <span className="text-[10px] text-slate-400">{response.results.length.toLocaleString('fa-IR')} نتیجه</span>
+      </div>
+
+      <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1">
+        {response.results.map((item, i) => (
+          <a
+            key={i}
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col gap-0.5 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 hover:border-[var(--cmd-green-ring)] transition-colors"
+          >
+            <span className="flex items-center justify-between gap-1 text-[11px] font-semibold text-[var(--cmd-green)]">
+              <span className="truncate">{item.title}</span>
+              <ExternalLink className="w-3 h-3 shrink-0 opacity-70" />
+            </span>
+            {item.snippet && (
+              <span className="text-[10px] text-slate-400 leading-relaxed line-clamp-3">{item.snippet}</span>
+            )}
+            <span className="text-[9px] text-slate-500" dir="ltr">
+              {item.source}
+            </span>
+          </a>
+        ))}
+      </div>
+
+      <GroundedPlacesCard pins={pins} onFocusPoint={onFocusPoint} onClear={onClearPins} />
+    </div>
+  );
+};
+
+/** مکان‌های شناسایی‌شدهٔ استعلام روی نقشه — کلیک روی هر مورد نقشه را روی آن می‌برد */
+const GroundedPlacesCard: React.FC<{
+  pins: MapSearchPin[];
+  onFocusPoint?: (target: MapFocusTarget) => void;
+  onClear: () => void;
+}> = ({ pins, onFocusPoint, onClear }) => {
+  if (pins.length === 0) return null;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-300">
+          <MapPin className="w-3.5 h-3.5" />
+          {pins.length.toLocaleString('fa-IR')} مکان روی نقشه مشخص شد
+        </span>
+        <button onClick={onClear} className="text-[10px] text-slate-500 hover:text-rose-300">
+          پاک کردن نشانه‌ها
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {pins.map((pin) => (
+          <button
+            key={pin.id}
+            onClick={() => onFocusPoint?.({ lat: pin.lat, lng: pin.lng, zoom: pin.kind === 'country' ? 5 : 8, seq: Date.now() })}
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-lg border border-slate-700 bg-slate-950/70 text-slate-300 hover:border-amber-500/60"
+            title={
+              pin.nearestGateName
+                ? `نزدیک‌ترین گذرگاه (${pin.nearestGateRoad ? GEO_DISTANCE_LABELS.road : GEO_DISTANCE_LABELS.air}): ${pin.nearestGateName} — ${pin.nearestGateKm} کیلومتر`
+                : pin.title
+            }
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: pin.color }} />
+            {pin.label}
+            {pin.nearestGateName && (pin.nearestGateKm ?? 0) >= 5 && (
+              <span className="text-slate-500">
+                · {pin.nearestGateName} ({pin.nearestGateKm?.toLocaleString('fa-IR')} km
+                {pin.nearestGateRoad ? ' جاده‌ای' : ' هوایی'})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

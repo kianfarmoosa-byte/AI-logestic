@@ -119,10 +119,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-14 px-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-['Vazirmatn']">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh]">
+      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh]">
         {/* Search Bar Input */}
         <div className="flex items-center gap-3 p-3.5 border-b border-slate-800 bg-slate-950/50">
-          <Search className="w-5 h-5 text-amber-400 shrink-0" />
+          <Search className="w-5 h-5 text-[var(--cmd-green)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -153,7 +153,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           <button
             onClick={() => setFilterType('all')}
             className={`px-2.5 py-0.5 rounded-full transition-all ${
-              filterType === 'all' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+              filterType === 'all' ? 'btn-cmd-green font-bold' : 'bg-slate-800 text-slate-300'
             }`}
           >
             همه
@@ -161,7 +161,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           <button
             onClick={() => setFilterType('crossings')}
             className={`px-2.5 py-0.5 rounded-full transition-all ${
-              filterType === 'crossings' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+              filterType === 'crossings' ? 'btn-cmd-green font-bold' : 'bg-slate-800 text-slate-300'
             }`}
           >
             گذرگاه‌های مرزی ({results.crossings.length})
@@ -169,7 +169,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           <button
             onClick={() => setFilterType('cities')}
             className={`px-2.5 py-0.5 rounded-full transition-all ${
-              filterType === 'cities' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+              filterType === 'cities' ? 'btn-cmd-green font-bold' : 'bg-slate-800 text-slate-300'
             }`}
           >
             شهرهای ترانزیتی ({results.cities.length})
@@ -177,7 +177,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           <button
             onClick={() => setFilterType('corridors')}
             className={`px-2.5 py-0.5 rounded-full transition-all ${
-              filterType === 'corridors' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+              filterType === 'corridors' ? 'btn-cmd-green font-bold' : 'bg-slate-800 text-slate-300'
             }`}
           >
             کریدورها ({results.corridors.length})
@@ -190,10 +190,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 onOpenAiSearch(searchTerm);
                 onClose();
               }}
-              className="mr-auto flex items-center gap-1.5 bg-gradient-to-r from-teal-500/20 to-amber-500/20 hover:from-teal-500/30 hover:to-amber-500/30 border border-teal-500/40 text-teal-300 px-3 py-1 rounded-full font-semibold transition-all shrink-0 text-[11px]"
+              className="mr-auto flex items-center gap-1.5 bg-[var(--cmd-green-soft)] hover:brightness-95 border border-[var(--cmd-green-ring)] text-[var(--cmd-green)] px-3 py-1 rounded-full font-semibold transition-all shrink-0 text-[11px]"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>استعلام بلادرنگ با Google Search</span>
+              <Sparkles className="w-3.5 h-3.5 text-[var(--cmd-green)]" />
+              <span>استعلام بلادرنگ با دستیار هوشمند</span>
             </button>
           )}
         </div>
@@ -205,7 +205,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
               <Search className="w-10 h-10 text-slate-600" />
               <div className="text-sm font-semibold">عبارت مورد نظر خود را برای جستجو وارد کنید</div>
               <div className="text-xs text-slate-500 max-w-md leading-relaxed">
-                دسترسی فوری به داده‌های ۲۰۷ گذرگاه مرزی، ۱۰۰+ محور جاده‌ای، صدها شهر ترانزیتی در ۲۴ کشور و استعلام آنلاین با گوگل
+                دسترسی فوری به داده‌های ۲۰۷ گذرگاه مرزی، ۱۰۰+ محور جاده‌ای، صدها شهر ترانزیتی در ۲۴ کشور و استعلام آنلاین با دستیار هوشمند
               </div>
             </div>
           ) : totalResults === 0 ? (
@@ -216,10 +216,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                   onOpenAiSearch(searchTerm);
                   onClose();
                 }}
-                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-teal-500 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs hover:brightness-110 shadow-lg"
+                className="flex items-center gap-2 btn-cmd-green font-bold px-4 py-2 rounded-xl text-xs shadow-lg"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>جستجو برای «{searchTerm}» در Google Search Grounding</span>
+                <span>جستجو برای «{searchTerm}» با دستیار هوشمند</span>
               </button>
             </div>
           ) : (
@@ -227,7 +227,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
               {/* Crossings Results */}
               {(filterType === 'all' || filterType === 'crossings') && results.crossings.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 mb-2">
+                  <div className="text-xs font-bold text-[var(--cmd-green)] flex items-center gap-1.5 mb-2">
                     <MapPin className="w-3.5 h-3.5" />
                     <span>گذرگاه‌های مرزی</span>
                   </div>
@@ -264,7 +264,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
               {/* Transit Cities Results */}
               {(filterType === 'all' || filterType === 'cities') && results.cities.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-teal-400 flex items-center gap-1.5 mb-2">
+                  <div className="text-xs font-bold text-[var(--tone-sky)] flex items-center gap-1.5 mb-2">
                     <Route className="w-3.5 h-3.5" />
                     <span>شهرهای ترانزیتی و محورهای ارتباطی</span>
                   </div>

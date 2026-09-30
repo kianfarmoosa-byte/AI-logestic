@@ -1,10 +1,139 @@
 @import "tailwindcss";
 
+/*
+ * ------------------------------------------------------------------
+ * اطلس ترانزیت — پوستهٔ روشن «کامند رود» (الهام از KEMETRA)
+ * معماری تم: توکن‌های اسلته به‌صورت CSS Variables در لایهٔ base
+ * بازتعریف می‌شوند (برگ سبز لیمویی ۷۴A21E + کارت‌های سفید + بوردرهای
+ * خاکستری روشن). هر کلاس tailwind موجود (bg-slate-950 و ...) بدون
+ * دست‌بردگی در مارکاپ به همان توکن نگاشت می‌شود؛ در نتیجه هیچ بخشی
+ * از رابط حذف یا جابه‌جا نمی‌شود، فقط ظاهر تغییر می‌کند.
+ * ------------------------------------------------------------------
+ */
 @layer base {
+  :root {
+    /* کانوس و سطوح */
+    --color-slate-950: #f7f8f7; /* کانوس اصلی: خاکستری‌سبز خیلی روشن */
+    --color-slate-900: #ffffff; /* کارت‌ها: سفید ناب */
+    --color-slate-800: #eef1ec; /* سطح ثانویه/هاور */
+    --color-slate-700: #e4e8e1; /* سطح ثالث */
+
+    /* متن و بوردرها */
+    --color-slate-100: #17251b; /* متن اصلی (سبز-تیرهٔ کامند رود) */
+    --color-slate-200: #27362b;
+    --color-slate-300: #46554b;
+    --color-slate-400: #6d7a6f;
+    --color-slate-500: #8b968c;
+    --color-slate-600: #a8b1a8;
+
+    /* بوردرهای نرم کارت‌ها */
+    --color-border: #e6eae2;
+
+    /* رنگ امضایی: سبز لیمویی کامند رود */
+    --cmd-green: #74a21e;
+    --cmd-green-hover: #5f8a14;
+    --cmd-green-soft: #eef6e0;
+    --cmd-green-ring: rgba(116, 162, 30, 0.35);
+
+    /* لهجه‌های معنایی (متن روی سطح روشن) */
+    --tone-amber: #b45309;
+    --tone-teal: #0f766e;
+    --tone-rose: #be123c;
+    --tone-sky: #0369a1;
+    --tone-emerald: #15803d;
+    --tone-violet: #6d28d9;
+
+    /* شبح سفید روی نقشه */
+    --glass-bg: rgba(255, 255, 255, 0.92);
+    --glass-border: rgba(23, 37, 27, 0.1);
+  }
+
+  /* حالت تیرهٔ کلاسیک: اگر کاربر «حالت تیره» را در Topbar انتخاب کند */
+  .theme-dark {
+    --color-slate-950: #06080d;
+    --color-slate-900: rgba(10, 16, 26, 0.88);
+    --color-slate-800: #1c2531;
+    --color-slate-700: #27303d;
+    --color-slate-100: #eef2f7;
+    --color-slate-200: #d8dfe8;
+    --color-slate-300: #aeb8c4;
+    --color-slate-400: #7e8998;
+    --color-slate-500: #64748b;
+    --color-slate-600: #4a5464;
+    --color-border: #1e293b;
+    --cmd-green: #a3c94f;
+    --cmd-green-hover: #b7d969;
+    --cmd-green-soft: rgba(163, 201, 79, 0.14);
+    --cmd-green-ring: rgba(163, 201, 79, 0.4);
+    --tone-amber: #fbbf24;
+    --tone-teal: #5eead4;
+    --tone-rose: #fda4af;
+    --tone-sky: #7dd3fc;
+    --tone-emerald: #86efac;
+    --tone-violet: #c4b5fd;
+    --glass-bg: rgba(6, 10, 16, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.1);
+  }
+
   body {
     font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     direction: rtl;
+    background: var(--color-slate-950);
+    color: var(--color-slate-100);
   }
+}
+
+/*
+ * نگاشت کلاس‌های اسلته به توکن‌های پوسته — قواعد بدون لایه تا بر
+ * یوتیلیتی‌های پیش‌فرض غلبه کنند (مشابه الگوی popup نقشه در همین فایل).
+ */
+@utility bg-slate-950 { background-color: var(--color-slate-950); }
+@utility bg-slate-900 { background-color: var(--color-slate-900); }
+@utility bg-slate-800 { background-color: var(--color-slate-800); }
+@utility bg-slate-700 { background-color: var(--color-slate-700); }
+@utility border-slate-950 { border-color: var(--color-border); }
+@utility border-slate-800 { border-color: var(--color-border); }
+@utility border-slate-700 { border-color: var(--color-border); }
+@utility border-slate-600 { border-color: var(--color-border); }
+/* divide-slate-800: قاعدهٔ ساده (نام utility با انتخابگر فرزند در TW4 نامعتبر است) */
+.divide-slate-800 > * + * {
+  border-color: var(--color-border);
+}
+@utility text-slate-100 { color: var(--color-slate-100); }
+@utility text-slate-200 { color: var(--color-slate-200); }
+@utility text-slate-300 { color: var(--color-slate-300); }
+@utility text-slate-400 { color: var(--color-slate-400); }
+@utility text-slate-500 { color: var(--color-slate-500); }
+@utility text-slate-600 { color: var(--color-slate-600); }
+@utility ring-slate-800 { --tw-ring-color: var(--color-border); }
+@utility ring-slate-700 { --tw-ring-color: var(--color-border); }
+
+/* هاور سطوح — در Tailwind 4 نام utility نباید «:» یا «/» داشته باشد؛
+ * پس حالت‌های hover با یک قاعدهٔ CSS ساده به توکن سطح ثانویه نگاشت می‌شوند. */
+.hover\:bg-slate-800:hover { background-color: var(--color-slate-800); }
+.hover\:bg-slate-900:hover { background-color: var(--color-slate-800); }
+.hover\:bg-slate-850:hover { background-color: var(--color-slate-700); }
+.hover\:bg-slate-700:hover { background-color: var(--color-slate-700); }
+.hover\:bg-slate-950:hover { background-color: var(--color-slate-800); }
+
+/* دکمهٔ سبز امضایی کامند رود — CTA اصلی هدر و تب‌ها */
+@utility btn-cmd-green {
+  background-color: var(--cmd-green);
+  color: #ffffff;
+  &:hover { background-color: var(--cmd-green-hover); }
+}
+
+@utility tab-active-green {
+  background-color: var(--cmd-green-soft);
+  color: var(--cmd-green);
+  border-color: var(--cmd-green-ring);
+}
+
+@utility glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 30px -12px rgba(23, 37, 27, 0.18);
+  backdrop-filter: blur(14px);
 }
 
 /* Custom scrollbars */
@@ -14,44 +143,126 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
+  background: rgba(23, 37, 27, 0.22);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.7);
+  background: rgba(116, 162, 30, 0.5);
 }
 
-/* MapLibre RTL popup styling */
+/* اسکرول افقی تب‌های پنل کناری (RTL) */
+.tab-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(116, 162, 30, 0.45) transparent;
+  padding-inline: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-scroll::-webkit-scrollbar-thumb {
+  background: rgba(116, 162, 30, 0.4);
+  border-radius: 999px;
+}
+
+.tab-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(116, 162, 30, 0.65);
+}
+
+/* نشانگر محوشدگی دو لبهٔ نوار تب‌ها (فقط رؤیت‌پذیری، روی تبها کلیک‌پذیر نمیماند) */
+.tab-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  z-index: 5;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.tab-fade-start {
+  right: -4px;
+  background: linear-gradient(to left, var(--glass-bg), rgba(255, 255, 255, 0));
+}
+
+.tab-fade-end {
+  left: -4px;
+  background: linear-gradient(to right, var(--glass-bg), rgba(255, 255, 255, 0));
+}
+
+/* دکمه‌های پیمایش شناور روی لبه‌های نوار تب‌ها */
+.tab-scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--glass-bg);
+  color: var(--color-slate-300);
+  box-shadow: 0 2px 8px rgba(23, 37, 27, 0.12);
+  transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.tab-scroll-btn:hover {
+  color: var(--cmd-green);
+  border-color: var(--cmd-green-ring);
+}
+
+.tab-scroll-btn-start {
+  right: -2px;
+}
+
+.tab-scroll-btn-end {
+  left: -2px;
+}
+
+/* MapLibre RTL popup styling — پوستهٔ روشن با متن تیره */
 .maplibregl-popup-content {
   font-family: 'Vazirmatn', sans-serif !important;
   direction: rtl;
-  background: #0f172a !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #ffffff !important;
+  color: #17251b !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 12px !important;
   padding: 8px 12px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 10px 25px -5px rgba(23, 37, 27, 0.25) !important;
 }
 
 .maplibregl-popup-tip {
-  border-top-color: #0f172a !important;
-  border-bottom-color: #0f172a !important;
+  border-top-color: #ffffff !important;
+  border-bottom-color: #ffffff !important;
 }
 
 .maplibregl-ctrl-group {
-  background: #0f172a !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 10px !important;
   overflow: hidden;
 }
 
 .maplibregl-ctrl-group button {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: 1px solid rgba(23, 37, 27, 0.08) !important;
 }
 
 .maplibregl-ctrl-group button:last-child {
@@ -59,5 +270,54 @@
 }
 
 .maplibregl-ctrl-icon {
+  filter: brightness(0.55);
+}
+
+/* حالت تیرهٔ اختیاری: بازگرداندن پوستهٔ شیشه‌ای تیرهٔ نقشه */
+.theme-dark .maplibregl-popup-content {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.theme-dark .maplibregl-popup-tip {
+  border-top-color: #0f172a !important;
+  border-bottom-color: #0f172a !important;
+}
+
+.theme-dark .maplibregl-ctrl-group {
+  background: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.theme-dark .maplibregl-ctrl-group button {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.theme-dark .maplibregl-ctrl-icon {
   filter: invert(1) brightness(0.85);
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.theme-dark .tab-fade-start {
+  background: linear-gradient(to left, rgba(6, 10, 16, 0.95), rgba(6, 10, 16, 0));
+}
+
+.theme-dark .tab-fade-end {
+  background: linear-gradient(to right, rgba(6, 10, 16, 0.95), rgba(6, 10, 16, 0));
+}
+
+.theme-dark .tab-scroll-btn {
+  border-color: rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+}
+
+.theme-dark .glass-card {
+  background: rgba(6, 10, 16, 0.88);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
 }

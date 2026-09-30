@@ -2,5 +2,5 @@
   "name": "اطلس ترانزیت و گذرگاه‌های مرزی ایران",
   "description": "سامانه هوشمند تحلیل شبکه راه‌ها، گذرگاه‌های مرزی، زنجیره تأمین کالا و مسیریابی چندوجهی منتهی به ایران با نقشه پایه منبع‌باز OpenFreeMap/OpenStreetMap و دسترسی به داده‌های زنده جوی، ارزی، مکان‌محور و تجاری",
   "requestFramePermissions": ["geolocation"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_AI_ASSISTANT"]
 }

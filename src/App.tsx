@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Search,
   MapPin,
@@ -11,9 +11,22 @@ import {
   ChevronLeft,
   Compass,
   Radar,
+  Truck,
 } from 'lucide-react';
 import { DATA, RN } from './data/atlasData';
-import { Crossing, Corridor } from './types';
+import {
+  Crossing,
+  Corridor,
+  IsochroneOverlay,
+  MapFocusTarget,
+  MapSearchPin,
+  RouteOverlay,
+  SavedRoute,
+} from './types';
+import { loadOrganizationalRoutes } from './services/routeEngine';
+import type { BorderParkSnapshot } from './services/borderPark';
+import { RouteStudio } from './components/RouteStudio';
+import { WebSearchPanel } from './components/WebSearchPanel';
 import { MapAtlas } from './components/MapAtlas';
 import { Topbar } from './components/Topbar';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
@@ -25,11 +38,66 @@ import { MultimodalPlanner } from './components/MultimodalPlanner';
 import { RoadNetworkView } from './components/RoadNetworkView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { LiveDataHub } from './components/LiveDataHub';
+import { BorderFlowDashboard } from './components/BorderFlowDashboard';
+
+/** تب‌های پنل کناری — منبع واحد برای هدر باز و ریل عمودی جمع‌شده */
+const PANEL_TABS: { id: AppTabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'ai', label: 'استعلام هوشمند ترانزیتی', icon: Sparkles },
+  { id: 'websearch', label: 'جستجوی زندهٔ وب', icon: Search },
+  { id: 'borderflow', label: 'جریان مرزها', icon: Truck },
+  { id: 'livedata', label: 'داده‌های زنده', icon: Radar },
+  { id: 'filter', label: 'فیلتر گذرگاه‌ها', icon: SlidersHorizontal },
+  { id: 'pathfinder', label: 'ترانزیت‌یاب (A*)', icon: Route },
+  { id: 'route', label: 'مسیریاب حمل و نقل', icon: Truck },
+  { id: 'multimodal', label: 'زنجیره حمل چندوجهی', icon: Layers },
+  { id: 'network', label: 'شبکه ۲۴ کشور', icon: MapPin },
+  { id: 'analytics', label: 'تحلیل و آمار', icon: BarChart3 },
+];
+
+type AppTabId = 'ai' | 'websearch' | 'borderflow' | 'livedata' | 'filter' | 'pathfinder' | 'route' | 'multimodal' | 'network' | 'analytics';
+
+/** در RTL، scrollLeft منفی است؛ «start» یعنی ابتدای فهرست (سمت راست) */
+const tabScrollAmount = (el: HTMLElement) => Math.max(120, el.clientWidth * 0.6);
 
 export default function App() {
   const [darkTheme, setDarkTheme] = useState(true);
-  const [activeTab, setActiveTab] = useState<'ai' | 'livedata' | 'filter' | 'pathfinder' | 'multimodal' | 'network' | 'analytics'>('ai');
+  const [activeTab, setActiveTab] = useState<AppTabId>('borderflow');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  /** عرض اشغال‌شدهٔ پنل کناری برای هم‌گام‌کردن دوربین نقشه */
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelOffset, setPanelOffset] = useState(0);
+
+  // اسکرول افقی تب‌های پنل: تشخیص سرریز + پیمایش برنامه‌ای (سازگار با RTL)
+  const tabsRef = useRef<HTMLElement>(null);
+  const [tabOverflow, setTabOverflow] = useState({ start: false, end: false });
+
+  const updateTabOverflow = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 4) {
+      setTabOverflow({ start: false, end: false });
+      return;
+    }
+    const sl = el.scrollLeft; // در RTL: 0 در ابتدا، منفی تا -max در انتها
+    setTabOverflow({ start: sl < -2, end: sl > -max + 2 });
+  }, []);
+
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el || isPanelCollapsed) return;
+    updateTabOverflow();
+    const ro = new ResizeObserver(updateTabOverflow);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isPanelCollapsed, updateTabOverflow]);
+
+  const scrollTabs = (dir: 'start' | 'end') => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const delta = tabScrollAmount(el);
+    el.scrollBy({ left: dir === 'start' ? -delta : delta, behavior: 'smooth' });
+  };
 
   // Crossings filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +118,42 @@ export default function App() {
   const [selectedRoutePath, setSelectedRoutePath] = useState<[number, number][] | undefined>(undefined);
   const [highlightedGateId, setHighlightedGateId] = useState<number | null>(null);
 
+  // مسیریابی و حمل‌ونقل: لایه‌های نقشه، ترسیم دستی و مسیرهای سازمانی
+  const [routeOverlays, setRouteOverlays] = useState<RouteOverlay[]>([]);
+  const [isochroneOverlays, setIsochroneOverlays] = useState<IsochroneOverlay[]>([]);
+  const [pickTarget, setPickTarget] = useState<'origin' | 'destination' | null>(null);
+  const [pickedLocation, setPickedLocation] = useState<{
+    lat: number;
+    lng: number;
+    name?: string;
+    target: 'origin' | 'destination';
+    seq: number;
+  } | null>(null);
+  const [draftPath, setDraftPath] = useState<[number, number][]>([]);
+  const [drawMode, setDrawMode] = useState(false);
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>(() => loadOrganizationalRoutes());
+
+  // مکان‌یابی نتایج جستجوی وب روی نقشه
+  const [searchPins, setSearchPins] = useState<MapSearchPin[]>([]);
+  const [mapFocus, setMapFocus] = useState<MapFocusTarget | null>(null);
+
+  // وضعیت زندهٔ صف گمرکات (سامانهٔ نوبتدهی Border Park) برای لایهٔ زندهٔ نقشه
+  const [liveGates, setLiveGates] = useState<BorderParkSnapshot[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/border-park/status')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((data: { gates?: BorderParkSnapshot[] }) => {
+        if (alive && Array.isArray(data?.gates)) setLiveGates(data.gates);
+      })
+      .catch(() => {
+        // بدون دادهٔ زنده، نقشه به رنگ‌بندی نوع گذرگاه برمی‌گردد
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Global Search Modal
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
@@ -67,6 +171,28 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // اندازه‌گیری پنل کناری: دوربین و نمای نقشه باید فضای اشغال‌شده را بدانند
+  useEffect(() => {
+    const node = panelRef.current;
+    if (!node) return;
+
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      const right = parseFloat(window.getComputedStyle(node).right) || 0;
+      setPanelOffset(Math.round(rect.width + right + 12));
+    };
+
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(node);
+    window.addEventListener('resize', update);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [isPanelCollapsed]);
 
   // Countries list for filter dropdown
   const countriesList = useMemo(() => {
@@ -160,7 +286,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className={`relative w-screen h-screen overflow-hidden ${darkTheme ? 'bg-[#06080d] text-[#e8ecf3]' : 'bg-[#eef1f5] text-[#1a2233]'}`}>
+    <div className={`relative w-screen h-screen overflow-hidden font-['Vazirmatn'] ${darkTheme ? 'theme-dark bg-[#06080d] text-[#e8ecf3]' : 'bg-[#f7f8f7] text-[#17251b]'}`}>
       {/* Topbar */}
       <Topbar
         totalFiltered={filteredCrossings.length}
@@ -174,6 +300,12 @@ export default function App() {
           setIsPanelCollapsed(false);
         }}
         activeTab={activeTab}
+        crossings={DATA.crossings}
+        onFocusGate={(c) => {
+          setSelectedCrossing(c);
+          setHighlightedGateId(c.id);
+          setMapFocus({ lat: c.lat, lng: c.lng, zoom: 11, seq: Date.now() });
+        }}
       />
 
       {/* MapLibre GL Background Map */}
@@ -188,11 +320,26 @@ export default function App() {
           onSelectCrossing={(crossing) => setSelectedCrossing(crossing)}
           selectedRoutePath={selectedRoutePath}
           highlightedGateId={highlightedGateId}
+          routeOverlays={routeOverlays}
+          isochroneOverlays={isochroneOverlays}
+          drawMode={drawMode}
+          draftPath={draftPath}
+          onMapClick={(lat, lng) => setDraftPath((prev) => [...prev, [lng, lat]])}
+          pickMode={pickTarget}
+          onPickLocation={(lat, lng, name) => {
+            setPickedLocation({ lat, lng, name, target: pickTarget || 'origin', seq: Date.now() });
+            setPickTarget(null);
+          }}
+          searchPins={searchPins}
+          focusTarget={mapFocus}
+          panelOffset={panelOffset}
+          liveGates={liveGates}
+          onOpenSearchResult={(pin) => window.open(pin.url, '_blank', 'noopener,noreferrer')}
         />
       </div>
 
-      {/* Floating Bottom/Left Map Legend */}
-      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-3 bg-slate-950/85 backdrop-blur-md px-3.5 py-2 rounded-full border border-slate-800 text-[11px] text-slate-300 shadow-xl pointer-events-auto">
+      {/* Floating Bottom/Left Map Legend — قرص شیشه‌ای روشن */}
+      <div className="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-3 bg-slate-950/92 backdrop-blur-md px-3.5 py-2 rounded-full border border-slate-800 text-[11px] text-slate-300 shadow-lg pointer-events-auto">
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
           <span>جاده‌ای</span>
@@ -206,8 +353,8 @@ export default function App() {
           <span>ریلی</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full ring-2 ring-amber-400 bg-amber-400" />
-          <span className="text-amber-300 font-semibold">دروازه ایران</span>
+          <span className="w-2.5 h-2.5 rounded-full ring-2 ring-[var(--cmd-green)] bg-[var(--cmd-green)]" />
+          <span className="text-[var(--cmd-green)] font-semibold">دروازه ایران</span>
         </div>
       </div>
 
@@ -227,183 +374,141 @@ export default function App() {
 
       {/* Main Tabbed Side Control Panel */}
       <div
-        className={`absolute top-[70px] right-3 bottom-3 z-20 flex flex-col bg-slate-950/90 backdrop-blur-2xl border border-slate-800 rounded-2xl shadow-2xl transition-all duration-300 overflow-hidden ${
-          isPanelCollapsed ? 'w-14' : 'w-[94vw] sm:w-[420px] md:w-[470px]'
+        ref={panelRef}
+        className={`group/panel absolute top-[70px] right-3 bottom-3 z-20 flex flex-col bg-slate-950/92 backdrop-blur-2xl border shadow-[0_12px_40px_-16px_rgba(23,37,27,0.35)] transition-all duration-300 overflow-hidden ${
+          isPanelCollapsed
+            ? 'w-[52px] border-slate-800 rounded-2xl'
+            : 'w-[94vw] sm:w-[420px] md:w-[470px] border-slate-800 rounded-2xl'
         }`}
       >
-        {/* Panel Header with Navigation Tabs */}
-        <div className="flex items-center justify-between border-b border-slate-800/90 p-2 bg-slate-950/50">
+        {/* هالهٔ سبز امضایی در بالای پنل */}
+        {!isPanelCollapsed && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_at_top_right,rgba(116,162,30,0.12),transparent_60%),radial-gradient(ellipse_at_top_left,rgba(116,162,30,0.06),transparent_55%)]" />
+        )}
+
+        {/* هدر برند پنل (فقط حالت باز) */}
+        {!isPanelCollapsed && (
+          <div className="relative flex items-center gap-2.5 px-3.5 pt-3 pb-2.5 border-b border-slate-800 bg-slate-950/60">
+            <div className="w-8 h-8 rounded-lg bg-[var(--cmd-green-soft)] border border-[var(--cmd-green-ring)] flex items-center justify-center">
+              <Compass className="w-[18px] h-[18px] text-[var(--cmd-green)]" />
+            </div>
+            <div className="flex flex-col leading-tight min-w-0">
+              <span className="text-[13px] font-black text-slate-100">کنسول اطلس ترانزیت</span>
+              <span className="text-[10px] text-slate-400">گذرگاه‌های مرزی · کریدورها · مسیریابی</span>
+            </div>
+            <div className="mr-auto flex items-center gap-1.5 shrink-0 pr-1">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--cmd-green)] opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--cmd-green)]" />
+              </span>
+              <span className="text-[10px] font-semibold text-[var(--cmd-green)]">برخط</span>
+            </div>
+          </div>
+        )}
+
+        {/* سربرگ ناوبری با تب‌های پیلسی — قابل اسکرول افقی */}
+        <div className="relative flex items-center gap-2 border-b border-slate-800/70 p-2 bg-slate-950/50">
           {!isPanelCollapsed && (
-            <div className="flex items-center gap-1 overflow-x-auto text-xs py-1 scrollbar-none flex-1">
+            <div className="relative flex-1 min-w-0">
+              {/* نشانگرهای محوشدگی دو لبهٔ نوار — فقط وقتی محتوای بیشتری در آن سمت هست */}
+              <div
+                aria-hidden
+                className={`tab-fade tab-fade-start ${tabOverflow.start ? 'opacity-100' : 'opacity-0'}`}
+              />
+              <div
+                aria-hidden
+                className={`tab-fade tab-fade-end ${tabOverflow.end ? 'opacity-100' : 'opacity-0'}`}
+              />
+              {/* دکمه‌های پیمایش چپ/راست — فقط وقتی سرریز وجود دارد */}
               <button
-                onClick={() => setActiveTab('ai')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                  activeTab === 'ai'
-                    ? 'bg-gradient-to-r from-teal-500 to-amber-500 text-slate-950 shadow-md'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
+                type="button"
+                onClick={() => scrollTabs('start')}
+                aria-label="پیمایش تب‌ها به راست"
+                className={`tab-scroll-btn tab-scroll-btn-start ${tabOverflow.start ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>استعلام هوشمند گوگل</span>
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
-
               <button
-                onClick={() => setActiveTab('livedata')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'livedata'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
+                type="button"
+                onClick={() => scrollTabs('end')}
+                aria-label="پیمایش تب‌ها به چپ"
+                className={`tab-scroll-btn tab-scroll-btn-end ${tabOverflow.end ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               >
-                <Radar className="w-3.5 h-3.5" />
-                <span>داده‌های زنده</span>
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-
-              <button
-                onClick={() => setActiveTab('filter')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'filter'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
+              <nav
+                ref={tabsRef}
+                onScroll={updateTabOverflow}
+                aria-label="ابزارهای اطلس"
+                className="tab-scroll flex items-center gap-1 py-1 flex-1"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>فیلتر گذرگاه‌ها</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('pathfinder')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'pathfinder'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Route className="w-3.5 h-3.5" />
-                <span>ترانزیت‌یاب (A*)</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('multimodal')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'multimodal'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>زنجیره حمل چندوجهی</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('network')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'network'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>شبکه ۲۴ کشور</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('analytics')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all shrink-0 ${
-                  activeTab === 'analytics'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>تحلیل و آمار</span>
-              </button>
+              {PANEL_TABS.map((tab) => {
+                const active = activeTab === tab.id;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    title={tab.label}
+                    aria-current={active ? 'page' : undefined}
+                    className={`group/tab relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs shrink-0 transition-all duration-200 ${
+                      active
+                        ? 'tab-active-green font-bold shadow-[0_0_18px_-8px_var(--cmd-green-ring)]'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800 border border-transparent'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-3.5 h-3.5 transition-colors ${
+                        active ? 'text-[var(--cmd-green)]' : 'text-slate-500 group-hover/tab:text-slate-300'
+                      }`}
+                    />
+                    <span className="whitespace-nowrap">{tab.label}</span>
+                    {active && (
+                      <span className="absolute -bottom-[7px] right-2 left-2 h-[2px] rounded-full bg-[var(--cmd-green)]" />
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
             </div>
           )}
 
           {/* Collapse / Expand Button */}
           <button
             onClick={() => setIsPanelCollapsed((prev) => !prev)}
-            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors shrink-0"
+            className="p-1.5 text-slate-400 hover:text-[var(--cmd-green)] hover:bg-slate-800 rounded-lg transition-colors shrink-0 border border-transparent hover:border-slate-700"
             title={isPanelCollapsed ? 'باز کردن پنل' : 'جمع کردن پنل'}
           >
             {isPanelCollapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Collapsed Vertical Icons */}
+        {/* Collapsed Vertical Rail */}
         {isPanelCollapsed ? (
-          <div className="flex flex-col items-center gap-3 py-4 text-slate-400">
-            <button
-              onClick={() => {
-                setActiveTab('ai');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="استعلام هوشمند گوگل"
-            >
-              <Sparkles className="w-5 h-5 text-amber-400" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('livedata');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="داده‌های زنده"
-            >
-              <Radar className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('filter');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="فیلتر گذرگاه‌ها"
-            >
-              <SlidersHorizontal className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('pathfinder');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="ترانزیت‌یاب شبکه"
-            >
-              <Route className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('multimodal');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="زنجیره چندوجهی"
-            >
-              <Layers className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('network');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="شبکه راه‌ها"
-            >
-              <MapPin className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('analytics');
-                setIsPanelCollapsed(false);
-              }}
-              className="p-2 hover:bg-slate-800 hover:text-amber-400 rounded-xl"
-              title="تحلیل و آمار"
-            >
-              <BarChart3 className="w-5 h-5" />
-            </button>
+          <div className="relative flex flex-col items-center gap-1.5 py-3 text-slate-400 overflow-y-auto scrollbar-none">
+            {PANEL_TABS.map((tab) => {
+              const active = activeTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setIsPanelCollapsed(false);
+                  }}
+                  title={tab.label}
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative p-2 rounded-xl transition-all duration-200 ${
+                    active
+                      ? 'tab-active-green border shadow-[0_0_16px_-6px_var(--cmd-green-ring)]'
+                      : 'text-slate-500 hover:bg-slate-800 hover:text-[var(--cmd-green)] border border-transparent'
+                  }`}
+                >
+                  <Icon className="w-[18px] h-[18px]" />
+                  {active && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-l-full bg-[var(--cmd-green)]" />}
+                </button>
+              );
+            })}
           </div>
         ) : (
           /* Panel Body Content */
@@ -411,8 +516,35 @@ export default function App() {
             {activeTab === 'ai' && (
               <AiSearchGroundingHub
                 selectedCrossing={selectedCrossing}
-                onFocusLocationOnMap={(lat, lng) => {
-                  // Focused via maps grounding
+                onFocusLocationOnMap={(lat, lng, zoom) => {
+                  setMapFocus({ lat, lng, zoom: zoom ?? 12, seq: Date.now() });
+                }}
+                crossings={DATA.crossings}
+                roadNetwork={RN}
+                corridors={DATA.corridors}
+                onDrawPins={setSearchPins}
+                onFocusPoint={setMapFocus}
+              />
+            )}
+
+            {activeTab === 'websearch' && (
+              <WebSearchPanel
+                selectedCrossing={selectedCrossing}
+                crossings={DATA.crossings}
+                roadNetwork={RN}
+                corridors={DATA.corridors}
+                onOpenAiGrounding={handleOpenAiSearchWithQuery}
+                onDrawPins={setSearchPins}
+                onFocusPoint={setMapFocus}
+              />
+            )}
+
+            {activeTab === 'borderflow' && (
+              <BorderFlowDashboard
+                crossings={DATA.crossings}
+                onFocusGate={(c) => {
+                  setSelectedCrossing(c);
+                  setMapFocus({ lat: c.lat, lng: c.lng, zoom: 11, seq: Date.now() });
                 }}
               />
             )}
@@ -455,6 +587,39 @@ export default function App() {
                   if (c) setSelectedCrossing(c);
                 }}
                 onOpenAiGrounding={handleOpenAiSearchWithQuery}
+              />
+            )}
+
+            {activeTab === 'route' && (
+              <RouteStudio
+                crossings={DATA.crossings}
+                roadNetwork={RN}
+                onDrawOverlays={setRouteOverlays}
+                onDrawIsochrones={setIsochroneOverlays}
+                onFocusGate={(id) => {
+                  setHighlightedGateId(id);
+                  const c = DATA.crossings.find((x) => x.id === id);
+                  if (c) setSelectedCrossing(c);
+                }}
+                onRequestPick={setPickTarget}
+                pickTarget={pickTarget}
+                pickedLocation={pickedLocation}
+                onOpenAiGrounding={handleOpenAiSearchWithQuery}
+                draftPath={draftPath}
+                drawMode={drawMode}
+                onToggleDraw={(active) => {
+                  setDrawMode(active);
+                  if (!active && draftPath.length > 1) {
+                    setSelectedRoutePath(draftPath);
+                  }
+                }}
+                onUndoDraw={() => setDraftPath((prev) => prev.slice(0, -1))}
+                onClearDraw={() => {
+                  setDraftPath([]);
+                  setSelectedRoutePath(undefined);
+                }}
+                savedRoutes={savedRoutes}
+                onSavedRoutesChange={setSavedRoutes}
               />
             )}
 
