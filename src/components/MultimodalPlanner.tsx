@@ -139,7 +139,7 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
   return (
     <div className="flex flex-col gap-3.5 p-3 font-['Vazirmatn']">
       <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-        <div className="text-xs font-bold text-teal-400 mb-1 flex items-center gap-1.5">
+        <div className="text-xs font-bold text-[var(--cmd-green)] mb-1 flex items-center gap-1.5">
           <Layers className="w-4 h-4" />
           <span>برنامه‌ریز زنجیره حمل چندوجهی (Multimodal)</span>
         </div>
@@ -179,7 +179,7 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
               onClick={() => setCargoType('general')}
               className={`p-1.5 rounded-lg border text-center transition-all ${
                 cargoType === 'general'
-                  ? 'bg-teal-500/20 border-teal-500 text-teal-300 font-bold'
+                  ? 'tab-active-green font-bold'
                   : 'bg-slate-950 border-slate-800 text-slate-400'
               }`}
             >
@@ -209,7 +209,7 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
               onClick={() => setCargoType('bulk')}
               className={`p-1.5 rounded-lg border text-center transition-all ${
                 cargoType === 'bulk'
-                  ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                  ? 'bg-amber-500/20 border-amber-500 text-[var(--tone-amber)] font-bold'
                   : 'bg-slate-950 border-slate-800 text-slate-400'
               }`}
             >
@@ -294,7 +294,7 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
 
         <button
           onClick={handlePlan}
-          className="mt-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-slate-950 font-bold py-2 rounded-lg text-xs transition-all shadow-md"
+          className="mt-1 flex items-center justify-center gap-1.5 btn-cmd-green font-bold py-2 rounded-lg text-xs transition-all shadow-md"
         >
           <Layers className="w-4 h-4" />
           <span>تحلیل و مقایسه سناریوهای حمل</span>
@@ -305,7 +305,7 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
       {planResult && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-teal-400">سناریوهای استخراج‌شده ({planResult.plans.length})</span>
+            <span className="text-xs font-bold text-[var(--cmd-green)]">سناریوهای استخراج‌شده ({planResult.plans.length})</span>
             <button
               onClick={handleExportJson}
               className="flex items-center gap-1 text-[11px] text-slate-300 bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-700 transition-all"
@@ -321,11 +321,11 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
               return (
                 <div
                   key={p.id}
-                  className="bg-slate-900/80 border border-slate-800 hover:border-teal-500/40 rounded-xl p-3 flex flex-col gap-2 transition-all shadow"
+                  className="bg-slate-900/80 border border-slate-800 hover:border-[var(--cmd-green-ring)] rounded-xl p-3 flex flex-col gap-2 transition-all shadow"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-slate-800 rounded-lg text-teal-400">
+                      <div className="p-1.5 bg-slate-800 rounded-lg text-[var(--cmd-green)]">
                         <IconComp className="w-4 h-4" />
                       </div>
                       <span className="font-bold text-xs text-slate-100">{p.title}</span>
@@ -371,10 +371,10 @@ export const MultimodalPlanner: React.FC<MultimodalPlannerProps> = ({
             onClick={() => {
               onOpenAiGrounding(`بررسی شرکت‌های مجری حمل، فورواردرها و نرخ به‌روز حمل ${origin} به ${destination} برای محموله ${cargoType}`);
             }}
-            className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-teal-500/20 to-purple-500/20 hover:from-teal-500/30 hover:to-purple-500/30 border border-teal-500/40 text-teal-300 py-2 rounded-xl text-xs font-semibold transition-all mt-1"
+            className="flex items-center justify-center gap-1.5 bg-[var(--cmd-green-soft)] hover:brightness-95 border border-[var(--cmd-green-ring)] text-[var(--cmd-green)] py-2 rounded-xl text-xs font-semibold transition-all mt-1"
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>استعلام فورواردرها و نرخ‌های آنلاین با Google Search Grounding</span>
+            <span>استعلام فورواردرها و نرخ‌های آنلاین با دستیار هوشمند</span>
           </button>
         </div>
       )}

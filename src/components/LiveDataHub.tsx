@@ -133,9 +133,9 @@ export const LiveDataHub: React.FC<LiveDataHubProps> = ({ selectedCrossing, onSe
 
   return (
     <div className="flex flex-col gap-4 p-3 font-['Vazirmatn']">
-      {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950/60 border border-teal-500/30 rounded-2xl p-4 shadow-lg">
-        <div className="flex items-center gap-2 text-teal-300 font-bold text-sm mb-1">
+      {/* Hero — کارت سبز امضایی */}
+      <div className="relative overflow-hidden bg-[var(--cmd-green-soft)] border border-[var(--cmd-green-ring)] rounded-2xl p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-[var(--cmd-green)] font-bold text-sm mb-1">
           <Radar className="w-4 h-4" />
           <span>زیرساخت داده زنده و معتبر</span>
         </div>
@@ -152,24 +152,24 @@ export const LiveDataHub: React.FC<LiveDataHubProps> = ({ selectedCrossing, onSe
           <span className="block text-[10px] text-slate-400">کل قابلیت‌ها</span>
           <b className="text-slate-100 text-base">{CAPABILITY_SUMMARY.total}</b>
         </div>
-        <div className="bg-slate-900/70 border border-emerald-500/30 rounded-xl p-2 text-center">
-          <span className="block text-[10px] text-emerald-400/90">فعال</span>
-          <b className="text-emerald-300 text-base">{CAPABILITY_SUMMARY.active}</b>
+        <div className="bg-slate-900/70 border border-[var(--tone-emerald)]/30 rounded-xl p-2 text-center">
+          <span className="block text-[10px] text-[var(--tone-emerald)]">فعال</span>
+          <b className="text-[var(--tone-emerald)] text-base">{CAPABILITY_SUMMARY.active}</b>
         </div>
-        <div className="bg-slate-900/70 border border-teal-500/30 rounded-xl p-2 text-center">
-          <span className="block text-[10px] text-teal-400/90">بدون کلید</span>
-          <b className="text-teal-300 text-base">{CAPABILITY_SUMMARY.keyless}</b>
+        <div className="bg-slate-900/70 border border-[var(--cmd-green-ring)] rounded-xl p-2 text-center">
+          <span className="block text-[10px] text-[var(--cmd-green)]">بدون کلید</span>
+          <b className="text-[var(--cmd-green)] text-base">{CAPABILITY_SUMMARY.keyless}</b>
         </div>
-        <div className="bg-slate-900/70 border border-amber-500/30 rounded-xl p-2 text-center">
-          <span className="block text-[10px] text-amber-400/90">نیازمند کلید</span>
-          <b className="text-amber-300 text-base">{CAPABILITY_SUMMARY.needsKey}</b>
+        <div className="bg-slate-900/70 border border-[var(--tone-amber)]/30 rounded-xl p-2 text-center">
+          <span className="block text-[10px] text-[var(--tone-amber)]">نیازمند کلید</span>
+          <b className="text-[var(--tone-amber)] text-base">{CAPABILITY_SUMMARY.needsKey}</b>
         </div>
       </div>
 
       {/* سنجش زنده */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--cmd-green)]">
             <Zap className="w-4 h-4" />
             <span>سنجش زنده (بدون کلید API)</span>
           </div>
@@ -334,7 +334,7 @@ export const LiveDataHub: React.FC<LiveDataHubProps> = ({ selectedCrossing, onSe
                 onClick={() => setStatusFilter(f.id)}
                 className={`text-[10px] px-2.5 py-1 rounded-full border transition-all ${
                   statusFilter === f.id
-                    ? 'bg-teal-500/20 border-teal-500/50 text-teal-300 font-bold'
+                    ? 'tab-active-green font-bold'
                     : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-200'
                 }`}
               >
