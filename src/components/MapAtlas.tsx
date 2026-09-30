@@ -1137,6 +1137,8 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
         const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
         map.addControl(overlay as any);
         deckRef.current = { overlay };
+        // بدون این sync، اگر اولین toggle روشن‌شده H3 یا OD باشد، لایه تا toggle بعدی رندر نمیشد
+        syncDeckLayers();
       } catch (error) {
         console.warn('deck.gl overlay init failed:', error);
       }
