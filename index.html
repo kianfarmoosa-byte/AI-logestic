@@ -44,6 +44,16 @@
     <script>
       // نمایش و گزارش خطاهای پیش از سوارشدن React (مثل خطای بارگذاری ماژول) به‌جای صفحهٔ خالی
       (function () {
+        // نویز شناخته‌شده گزارش نمی‌شود: سوکت HMR که پراکسی پیش‌نمایش تونل نمی‌کند
+        var NOISE = [
+          /WebSocket closed without opened/i,
+          /@vite\/client/i,
+          /\[vite\] connect/i,
+        ];
+        function isNoise(message, stack) {
+          var text = (message || '') + '\n' + (stack || '');
+          return NOISE.some(function (pattern) { return pattern.test(text); });
+        }
         function show(message, stack) {
           try {
             var box = document.getElementById('boot-error');
@@ -64,14 +74,17 @@
           } catch (ignored) {}
         }
         window.addEventListener('error', function (event) {
-          show(event.message || 'خطای ناشناخته', event.error && event.error.stack);
+          var message = event.message || 'خطای ناشناخته';
+          var stack = event.error && event.error.stack;
+          if (isNoise(message, stack)) return;
+          show(message, stack);
         });
         window.addEventListener('unhandledrejection', function (event) {
           var reason = event.reason;
-          show(
-            reason instanceof Error ? reason.message : String(reason),
-            reason instanceof Error ? reason.stack : null
-          );
+          var message = reason instanceof Error ? reason.message : String(reason);
+          var stack = reason instanceof Error ? reason.stack : null;
+          if (isNoise(message, stack)) return;
+          show(message, stack);
         });
       })();
     </script>
