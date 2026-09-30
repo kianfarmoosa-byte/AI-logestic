@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import {
   Search,
   MapPin,
@@ -25,20 +25,35 @@ import {
 } from './types';
 import { loadOrganizationalRoutes } from './services/routeEngine';
 import type { BorderParkSnapshot } from './services/borderPark';
-import { RouteStudio } from './components/RouteStudio';
-import { WebSearchPanel } from './components/WebSearchPanel';
-import { MapAtlas } from './components/MapAtlas';
 import { Topbar } from './components/Topbar';
-import { GlobalSearchModal } from './components/GlobalSearchModal';
-import { CrossingDrawer } from './components/CrossingDrawer';
-import { AiSearchGroundingHub } from './components/AiSearchGroundingHub';
 import { FilterView } from './components/FilterView';
-import { TransitPathfinder } from './components/TransitPathfinder';
-import { MultimodalPlanner } from './components/MultimodalPlanner';
-import { RoadNetworkView } from './components/RoadNetworkView';
-import { AnalyticsView } from './components/AnalyticsView';
-import { LiveDataHub } from './components/LiveDataHub';
 import { BorderFlowDashboard } from './components/BorderFlowDashboard';
+
+/* تقسیم کد: نقشهٔ سنگین (MapLibre) و پنل‌های تب فقط در اولین نیاز بارگذاری می‌شوند */
+const MapAtlas = lazy(() => import('./components/MapAtlas').then((m) => ({ default: m.MapAtlas })));
+const GlobalSearchModal = lazy(() => import('./components/GlobalSearchModal').then((m) => ({ default: m.GlobalSearchModal })));
+const CrossingDrawer = lazy(() => import('./components/CrossingDrawer').then((m) => ({ default: m.CrossingDrawer })));
+const AiSearchGroundingHub = lazy(() => import('./components/AiSearchGroundingHub').then((m) => ({ default: m.AiSearchGroundingHub })));
+const WebSearchPanel = lazy(() => import('./components/WebSearchPanel').then((m) => ({ default: m.WebSearchPanel })));
+const LiveDataHub = lazy(() => import('./components/LiveDataHub').then((m) => ({ default: m.LiveDataHub })));
+const TransitPathfinder = lazy(() => import('./components/TransitPathfinder').then((m) => ({ default: m.TransitPathfinder })));
+const RouteStudio = lazy(() => import('./components/RouteStudio').then((m) => ({ default: m.RouteStudio })));
+const MultimodalPlanner = lazy(() => import('./components/MultimodalPlanner').then((m) => ({ default: m.MultimodalPlanner })));
+const RoadNetworkView = lazy(() => import('./components/RoadNetworkView').then((m) => ({ default: m.RoadNetworkView })));
+const AnalyticsView = lazy(() => import('./components/AnalyticsView').then((m) => ({ default: m.AnalyticsView })));
+
+/** نمایشگر بارگذاری بخش‌های code-split شده — هم‌سبک پوستهٔ سبز KEMETRA */
+function SectionLoader({ label, full }: { label: string; full?: boolean }) {
+  return (
+    <div className={`flex flex-col items-center justify-center gap-3 text-slate-400 ${full ? 'h-full w-full' : 'py-20'}`}>
+      <span className="relative flex h-7 w-7">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--cmd-green)] opacity-30" />
+        <span className="relative inline-flex h-7 w-7 animate-spin rounded-full border-2 border-[var(--cmd-green)] border-t-transparent" />
+      </span>
+      <span className="text-[11px] font-medium">{label}</span>
+    </div>
+  );
+}
 
 /** تب‌های پنل کناری — منبع واحد برای هدر باز و ریل عمودی جمع‌شده */
 const PANEL_TABS: { id: AppTabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -308,9 +323,10 @@ export default function App() {
         }}
       />
 
-      {/* MapLibre GL Background Map */}
+      {/* MapLibre GL Background Map — code-split شده؛ چرخندهٔ هم‌سبک پوسته تا اولین رندر نقشه */}
       <div className="absolute inset-0 pt-[58px]">
-        <MapAtlas
+        <Suspense fallback={<SectionLoader label="در حال بارگذاری نقشه…" full />}>
+          <MapAtlas
           crossings={DATA.crossings}
           corridors={DATA.corridors}
           roadNetwork={RN}
@@ -335,7 +351,8 @@ export default function App() {
           panelOffset={panelOffset}
           liveGates={liveGates}
           onOpenSearchResult={(pin) => window.open(pin.url, '_blank', 'noopener,noreferrer')}
-        />
+          />
+        </Suspense>
       </div>
 
       {/* Floating Bottom/Left Map Legend — قرص شیشه‌ای روشن */}
@@ -359,7 +376,8 @@ export default function App() {
       </div>
 
       {/* Interactive Crossing Detail Drawer */}
-      <CrossingDrawer
+      <Suspense fallback={null}>
+        <CrossingDrawer
         crossing={selectedCrossing}
         onClose={() => setSelectedCrossing(null)}
         onQueryAiSearch={(query, crossingName) => {
@@ -370,7 +388,8 @@ export default function App() {
         }}
         onRouteFrom={handleRouteFrom}
         onRouteTo={handleRouteTo}
-      />
+        />
+      </Suspense>
 
       {/* Main Tabbed Side Control Panel */}
       <div
@@ -511,8 +530,9 @@ export default function App() {
             })}
           </div>
         ) : (
-          /* Panel Body Content */
+          /* Panel Body Content — همهٔ ابزارها code-split شده‌اند و با Suspense لَزی می‌آیند */
           <div className="flex-1 overflow-y-auto">
+            <Suspense fallback={<SectionLoader label="در حال بارگذاری ابزار…" />}>
             {activeTab === 'ai' && (
               <AiSearchGroundingHub
                 selectedCrossing={selectedCrossing}
@@ -650,11 +670,13 @@ export default function App() {
                 onFocusGate={(crossing) => setSelectedCrossing(crossing)}
               />
             )}
+            </Suspense>
           </div>
         )}
       </div>
 
       {/* Global Universal Search Modal */}
+      <Suspense fallback={null}>
       <GlobalSearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
@@ -667,6 +689,7 @@ export default function App() {
         }}
         onOpenAiSearch={(q) => handleOpenAiSearchWithQuery(q)}
       />
+      </Suspense>
     </div>
   );
 }
