@@ -1,12 +1,30 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as h3 from 'h3-js';
 import { reportClientError } from '../services/clientErrorReport';
+import type * as H3Namespace from 'h3-js';
 import * as maplibregl from 'maplibre-gl';
 import { setWorkerUrl } from 'maplibre-gl';
 import maplibreglWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { BorderParkSnapshot } from '../services/borderPark';
 import { MapLiveLegend } from './MapLiveLegend';
+
+/* h3-js (~۵۰۰kB) به‌صورت لَزی همراه deck.gl بارگذاری می‌شود — تایپ‌ها از namespace استاتیک */
+let h3Promise: Promise<typeof H3Namespace> | null = null;
+let h3Module: typeof H3Namespace | null = null;
+const ensureH3 = (): Promise<typeof H3Namespace> => {
+  if (!h3Promise) {
+    h3Promise = import('h3-js').then((m) => {
+      h3Module = m;
+      return m;
+    });
+  }
+  return h3Promise;
+};
+/** دسترسی سنکرون پس از ensureH3 — فقط برای readهای داخلی لایه‌های H3 */
+const h3 = () => {
+  if (!h3Module) throw new Error('h3-js not loaded yet');
+  return h3Module;
+};
 import {
   Crossing,
   Corridor,
@@ -501,8 +519,9 @@ function buildOdFlows(corridors: Corridor[], activeCorridors: boolean[], gates: 
   return flows;
 }
 
-/** تجمیع فشار (صف زنده × وزن انتظار + تردد پایه) در سلول‌های H3 res 4 */
-function buildH3Pressure(gates: Crossing[], live: BorderParkSnapshot[] | undefined): H3Cell[] {
+/** تجمیع فشار (صف زنده × وزن انتظار + تردد پایه) در سلول‌های H3 res 4 — لَزی همراه بارگذاری h3-js */
+async function buildH3Pressure(gates: Crossing[], live: BorderParkSnapshot[] | undefined): Promise<H3Cell[]> {
+  const h3 = await ensureH3();
   const liveByGate = new Map<number, BorderParkSnapshot>();
   (live || []).forEach((g) => {
     if (g.gateId != null) liveByGate.set(g.gateId, g);
@@ -1098,7 +1117,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
     };
   }, []);
 
-  /** اطمینان از وجود overlay (وقتی یکی از toggleهای دیگر اول روشن می‌شود) */
+  /** اطمینان از وجود overlay (وقتی یکی از toggleهای دیگر اول روشن می‌شود) — همراه بارگذاری لَزی h3-js */
   const toggleQueueColumnsHelpers = {
     ensureOverlay: async () => {
       const map = mapRef.current;
@@ -1109,6 +1128,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
           import('@deck.gl/layers'),
           import('@deck.gl/geo-layers'),
           import('@deck.gl/layers'),
+          ensureH3(),
         ]);
         if (mapRef.current !== map) return;
         ColumnLayerRef.current = col;
@@ -1201,7 +1221,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
           const map = mapRef.current;
           if (!info.object || !map) return;
           const cell = info.object as H3Cell;
-          const center = h3.cellToLatLng(cell.id);
+          const center = h3().cellToLatLng(cell.id);
           (map as any).__cameraLog = `h3-fly cell=${cell.id}`;
           map.flyTo({ center: [center[1], center[0]], zoom: Math.max(map.getZoom(), 6.5), pitch: 45, duration: 1400 });
           h3PopupRef.current?.remove();
@@ -1269,6 +1289,7 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
           import('@deck.gl/layers'),
           import('@deck.gl/geo-layers'),
           import('@deck.gl/layers'),
+          ensureH3(),
         ]);
         if (mapRef.current !== map) return; // نقشه در فاصلهٔ ایمپورت دور ریخته شده
         ColumnLayerRef.current = col;
@@ -1287,14 +1308,22 @@ export const MapAtlas: React.FC<MapAtlasProps> = ({
     syncDeckLayers();
   };
 
-  /** toggle لایهٔ کانون فشار H3 */
+  /** toggle لایهٔ کانون فشار H3 — سلول‌ها پس از بارگذاری لَزی h3-js محاسبه می‌شوند */
   const toggleH3Pressure = () => {
     const map = mapRef.current;
     if (!map) return;
     const next = !h3PressureOn;
     setH3PressureOn(next);
     if (next) {
-      h3CellsRef.current = buildH3Pressure(crossingsRef.current, liveGatesDeckRef.current);
+      buildH3Pressure(crossingsRef.current, liveGatesDeckRef.current)
+        .then((cells) => {
+          h3CellsRef.current = cells;
+          syncDeckLayers();
+        })
+        .catch((error) => {
+          console.warn('h3-js load failed:', error);
+          setH3PressureOn(false);
+        });
     }
     if (!next && !showQueueColumns && !odFlowsRef.current) {
       try {
